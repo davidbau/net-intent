@@ -8,9 +8,9 @@ It is going to reach around 0.8% error rate on the test set.
 
 """
 import logging
-import numpy
+import numpy as np
 from argparse import ArgumentParser
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 
 from theano import tensor
 from theano import gradient
@@ -84,7 +84,6 @@ class AttributedGradientDescent(GradientDescent):
         self.attribution_updates = OrderedDict(
             [_create_attribution_updates(self.attributions[param],
                 self.jacobians[param]) for param in self.parameters])
-        # import pdb; pdb.set_trace()
         self.add_updates(self.attribution_updates)
 
     def _compute_jacobians(self):
@@ -139,7 +138,8 @@ class LeNet(FeedforwardSequence, Initializable):
     def __init__(self, conv_activations, num_channels, image_shape,
                  filter_sizes, feature_maps, pooling_sizes,
                  top_mlp_activations, top_mlp_dims,
-                 conv_step=None, border_mode='valid', **kwargs):
+                 conv_step=None, border_mode='valid',
+                 tied_biases=True, **kwargs):
         if conv_step is None:
             self.conv_step = (1, 1)
         else:
@@ -149,6 +149,7 @@ class LeNet(FeedforwardSequence, Initializable):
         self.top_mlp_activations = top_mlp_activations
         self.top_mlp_dims = top_mlp_dims
         self.border_mode = border_mode
+        self.tied_biases = tied_biases
 
         conv_parameters = zip(filter_sizes, feature_maps)
 
@@ -158,6 +159,7 @@ class LeNet(FeedforwardSequence, Initializable):
                            num_filters=num_filter,
                            step=self.conv_step,
                            border_mode=self.border_mode,
+                           tied_biases=self.tied_biases,
                            name='conv_{}'.format(i))
              for i, (filter_size, num_filter)
              in enumerate(conv_parameters)),
@@ -192,7 +194,7 @@ class LeNet(FeedforwardSequence, Initializable):
         conv_out_dim = self.conv_sequence.get_dim('output')
 
         self.top_mlp.activations = self.top_mlp_activations
-        self.top_mlp.dims = [numpy.prod(conv_out_dim)] + self.top_mlp_dims
+        self.top_mlp.dims = [np.prod(conv_out_dim)] + self.top_mlp_dims
 
 
 def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
@@ -284,7 +286,7 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
                        aggregation.mean(algorithm.total_gradient_norm)],
                       prefix="train",
                       after_epoch=True),
-                  Checkpoint(save_to),
+    #              Checkpoint(save_to),
                   ProgressBar(),
                   Printing()]
 
@@ -297,6 +299,31 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
         extensions=extensions)
 
     main_loop.run()
+    hist = list(algorithm.attributions.values())
+    for pindex in range(0, len(hist)):
+        allvals = hist[pindex].get_value()
+        if np.prod(allvals.shape[1:]) <= 200:
+            allvals = np.reshape(allvals, (allvals.shape[0], 1, -1))
+        else:
+            allvals = np.reshape(allvals, allvals.shape[0:2] + (-1,))
+        for nindex in range(0, allvals.shape[1]):
+            vals = allvals[:,nindex,:]
+            print('Attribution for parameter %s for layer %s unit %d' % (
+                hist[pindex].tag.for_parameter.name,
+                hist[pindex].tag.for_parameter.tag.annotations[0].name,
+                nindex))
+            bounds = sorted(zip(
+                vals.argmin(axis=0).flatten(),
+                vals.argmax(axis=0).flatten()))
+            bc = defaultdict(int)
+            for b in bounds:
+                bc[b] += 1
+            for x in range(10):
+                for y in range(10):
+                    print(y, '->', x, '*' * bc[(x, y)])
+                print()
+
+    # import pdb; pdb.set_trace()
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
