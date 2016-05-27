@@ -19,6 +19,7 @@ setup(
         'matplotlib',
         'scipy',
         'termcolor',
+        'bokeh == 0.10.0',
         'Theano >= 0.7.0',
         'Blocks',
     ],

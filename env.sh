@@ -36,6 +36,8 @@ python3 -m pip install scipy
 pip install git+git://github.com/mila-udem/blocks.git \
   -r https://raw.githubusercontent.com/mila-udem/blocks/master/requirements.txt
 
+pip install git+git://github.com/mila-udem/blocks-extras.git
+
 # pip install -e works for everything else.
 python3 -m pip install --upgrade -e .
 # exit the venv
