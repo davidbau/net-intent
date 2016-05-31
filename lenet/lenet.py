@@ -17,7 +17,7 @@ from theano import gradient
 
 from blocks.algorithms import GradientDescent, Scale
 from blocks.bricks import (MLP, Rectifier, Initializable, FeedforwardSequence,
-                           Softmax, Activation, application)
+                           Softmax, Activation, Linear, application)
 from blocks.bricks.base import Brick
 from blocks.bricks.conv import (Convolutional, ConvolutionalSequence,
                                 Flattener, MaxPooling)
@@ -26,12 +26,13 @@ from blocks.extensions import FinishAfter, Timing, Printing, ProgressBar
 from blocks.extensions.monitoring import (DataStreamMonitoring,
                                           TrainingDataMonitoring)
 from blocks.extensions.saveload import Checkpoint
+from blocks.filter import VariableFilter
 from blocks.graph import ComputationGraph
 from blocks.initialization import Constant, Uniform
 from blocks.main_loop import MainLoop
 from blocks.model import Model
 from blocks.monitoring import aggregation
-from blocks.roles import add_role, PersistentRole
+from blocks.roles import add_role, PersistentRole, WEIGHT
 from blocks.utils import shared_floatx_zeros
 from fuel.datasets import MNIST
 from fuel.schemes import ShuffledScheme
@@ -201,15 +202,19 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
          conv_sizes=None, pool_sizes=None, batch_size=500,
          num_batches=None):
     if feature_maps is None:
-        feature_maps = [20, 50]
+        feature_maps = [6, 16]
     if mlp_hiddens is None:
-        mlp_hiddens = [500]
+        mlp_hiddens = [120, 84]
     if conv_sizes is None:
         conv_sizes = [5, 5]
     if pool_sizes is None:
         pool_sizes = [2, 2]
     image_size = (28, 28)
     output_size = 10
+
+    # The above are from LeCun's paper. The blocks example had:
+    #    feature_maps = [20, 50]
+    #    mlp_hiddens = [500]
 
     # Use ReLUs everywhere and softmax for the final prediction
     conv_activations = [Rectifier() for _ in feature_maps]
@@ -253,6 +258,11 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
                   .copy(name='error_rate'))
 
     cg = ComputationGraph([cost, error_rate, components])
+
+    # Apply regularization to the cost
+    weights = VariableFilter(roles=[WEIGHT])(cg.variables)
+    cost = cost + sum([0.005 * (W ** 2).sum() for W in weights])
+    cost.name = 'cost_with_regularization'
 
     mnist_train = MNIST(("train",))
     mnist_train_stream = DataStream.default_stream(
@@ -299,31 +309,59 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
         extensions=extensions)
 
     main_loop.run()
-    hist = list(algorithm.attributions.values())
+    param, hist = zip(*algorithm.attributions.items())
     for pindex in range(0, len(hist)):
         allvals = hist[pindex].get_value()
-        if np.prod(allvals.shape[1:]) <= 200:
+        pvals = param[pindex].get_value()
+        if np.prod(allvals.shape[1:]) <= 700:
             allvals = np.reshape(allvals, (allvals.shape[0], 1, -1))
+            pvals = np.reshape(pvals, (1, -1))
+        elif (hist[pindex].tag.for_parameter.name == 'W' and isinstance(
+              hist[pindex].tag.for_parameter.tag.annotations[0], Linear)):
+            allvals = np.transpose(allvals, (0, 2, 1))
+            pvals = np.transpose(pvals, (1, 0))
         else:
             allvals = np.reshape(allvals, allvals.shape[0:2] + (-1,))
+            pvals = np.reshape(pvals, (pvals.shape[0], -1))
         for nindex in range(0, allvals.shape[1]):
             vals = allvals[:,nindex,:]
-            print('Attribution for parameter %s for layer %s unit %d' % (
+            name = ('unit %d' % nindex) if allvals.shape[1] > 1 else 'units'
+            print('Attribution for parameter %s for layer %s %s' % (
                 hist[pindex].tag.for_parameter.name,
                 hist[pindex].tag.for_parameter.tag.annotations[0].name,
-                nindex))
+                name))
+            svals = np.sort(vals, axis=0).reshape((vals.shape[0], -1))
+            sinds = np.argsort(vals, axis=0).reshape((vals.shape[0], -1))
+            for j in range(svals.shape[1]):
+                print('Sorted hist for weight', j, pvals[nindex, j])
+                limit = max(abs(svals[:,j]))
+                for k in range(svals.shape[0]):
+                    n = int(np.nan_to_num(32 * svals[k, j] / limit))
+                    if n < 0:
+                        s = (32 + n) * ' ' + (-n) * '#'
+                    else:
+                        s = 32 * ' ' + (n + 1) * '#'
+                    print(s, svals[k, j], sinds[k, j])
+
             bounds = sorted(zip(
                 vals.argmin(axis=0).flatten(),
                 vals.argmax(axis=0).flatten()))
             bc = defaultdict(int)
             for b in bounds:
-                bc[b] += 1
+                if b[0] != b[1]:
+                    bc[b] += 1
             for x in range(10):
+                printed = False
                 for y in range(10):
-                    print(y, '->', x, '*' * bc[(x, y)])
-                print()
+                    amt = bc[(x, y)]
+                    if amt:
+                        print('%d -> %d:%s %d' %
+                            (y, x, '#' * int(4 * np.log2(amt)), amt))
+                        printed = True
+                if printed:
+                    print()
 
-    # import pdb; pdb.set_trace()
+    import pdb; pdb.set_trace()
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
@@ -335,8 +373,8 @@ if __name__ == "__main__":
                         help="Destination to save the state of the training "
                              "process.")
     parser.add_argument("--feature-maps", type=int, nargs='+',
-                        default=[20, 50], help="List of feature maps numbers.")
-    parser.add_argument("--mlp-hiddens", type=int, nargs='+', default=[500],
+                        default=[6, 16], help="List of feature maps numbers.")
+    parser.add_argument("--mlp-hiddens", type=int, nargs='+', default=[120, 84],
                         help="List of numbers of hidden units for the MLP.")
     parser.add_argument("--conv-sizes", type=int, nargs='+', default=[5, 5],
                         help="Convolutional kernels sizes. The kernels are "
