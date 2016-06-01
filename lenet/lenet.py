@@ -198,6 +198,62 @@ class LeNet(FeedforwardSequence, Initializable):
         self.top_mlp.dims = [np.prod(conv_out_dim)] + self.top_mlp_dims
 
 
+def print_attributions(algorithm):
+    param, hist = zip(*algorithm.attributions.items())
+    for pindex in range(0, len(hist)):
+        allvals = hist[pindex].get_value()
+        pvals = param[pindex].get_value()
+        # if np.prod(allvals.shape[1:]) <= 700:
+        #     allvals = np.reshape(allvals, (allvals.shape[0], 1, -1))
+        #     pvals = np.reshape(pvals, (1, -1))
+        if (hist[pindex].tag.for_parameter.name == 'W' and isinstance(
+              hist[pindex].tag.for_parameter.tag.annotations[0], Linear)):
+            allvals = np.transpose(allvals, (0, 2, 1))
+            pvals = np.transpose(pvals, (1, 0))
+        else:
+            allvals = np.reshape(allvals, allvals.shape[0:2] + (-1,))
+            pvals = np.reshape(pvals, (pvals.shape[0], -1))
+        for nindex in range(0, allvals.shape[1]):
+            vals = allvals[:,nindex,:]
+            name = ('unit %d' % nindex) if allvals.shape[1] > 1 else 'units'
+            print('Attribution for parameter %s for layer %s %s' % (
+                hist[pindex].tag.for_parameter.name,
+                hist[pindex].tag.for_parameter.tag.annotations[0].name,
+                name))
+
+            # Individual weight histograms
+            if False:
+                svals = np.sort(vals, axis=0).reshape((vals.shape[0], -1))
+                sinds = np.argsort(vals, axis=0).reshape((vals.shape[0], -1))
+                for j in range(svals.shape[1]):
+                    print('Sorted hist for weight', j, pvals[nindex, j])
+                    limit = max(abs(svals[:,j]))
+                    for k in range(svals.shape[0]):
+                        n = int(np.nan_to_num(32 * svals[k, j] / limit))
+                        if n < 0:
+                            s = (32 + n) * ' ' + (-n) * '#'
+                        else:
+                            s = 32 * ' ' + (n + 1) * '#'
+                        print(s, svals[k, j], sinds[k, j])
+
+            bounds = sorted(zip(
+                vals.argmin(axis=0).flatten(),
+                vals.argmax(axis=0).flatten()))
+            bc = defaultdict(int)
+            for b in bounds:
+                if b[0] != b[1]:
+                    bc[b] += 1
+            for x in range(10):
+                printed = False
+                for y in range(10):
+                    amt = bc[(x, y)]
+                    if amt:
+                        print('%d -> %d:%s %d' %
+                            (y, x, '#' * int(4 * np.log2(amt)), amt))
+                        printed = True
+                if printed:
+                    print()
+
 def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
          conv_sizes=None, pool_sizes=None, batch_size=500,
          num_batches=None):
@@ -309,57 +365,8 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
         extensions=extensions)
 
     main_loop.run()
-    param, hist = zip(*algorithm.attributions.items())
-    for pindex in range(0, len(hist)):
-        allvals = hist[pindex].get_value()
-        pvals = param[pindex].get_value()
-        if np.prod(allvals.shape[1:]) <= 700:
-            allvals = np.reshape(allvals, (allvals.shape[0], 1, -1))
-            pvals = np.reshape(pvals, (1, -1))
-        elif (hist[pindex].tag.for_parameter.name == 'W' and isinstance(
-              hist[pindex].tag.for_parameter.tag.annotations[0], Linear)):
-            allvals = np.transpose(allvals, (0, 2, 1))
-            pvals = np.transpose(pvals, (1, 0))
-        else:
-            allvals = np.reshape(allvals, allvals.shape[0:2] + (-1,))
-            pvals = np.reshape(pvals, (pvals.shape[0], -1))
-        for nindex in range(0, allvals.shape[1]):
-            vals = allvals[:,nindex,:]
-            name = ('unit %d' % nindex) if allvals.shape[1] > 1 else 'units'
-            print('Attribution for parameter %s for layer %s %s' % (
-                hist[pindex].tag.for_parameter.name,
-                hist[pindex].tag.for_parameter.tag.annotations[0].name,
-                name))
-            svals = np.sort(vals, axis=0).reshape((vals.shape[0], -1))
-            sinds = np.argsort(vals, axis=0).reshape((vals.shape[0], -1))
-            for j in range(svals.shape[1]):
-                print('Sorted hist for weight', j, pvals[nindex, j])
-                limit = max(abs(svals[:,j]))
-                for k in range(svals.shape[0]):
-                    n = int(np.nan_to_num(32 * svals[k, j] / limit))
-                    if n < 0:
-                        s = (32 + n) * ' ' + (-n) * '#'
-                    else:
-                        s = 32 * ' ' + (n + 1) * '#'
-                    print(s, svals[k, j], sinds[k, j])
 
-            bounds = sorted(zip(
-                vals.argmin(axis=0).flatten(),
-                vals.argmax(axis=0).flatten()))
-            bc = defaultdict(int)
-            for b in bounds:
-                if b[0] != b[1]:
-                    bc[b] += 1
-            for x in range(10):
-                printed = False
-                for y in range(10):
-                    amt = bc[(x, y)]
-                    if amt:
-                        print('%d -> %d:%s %d' %
-                            (y, x, '#' * int(4 * np.log2(amt)), amt))
-                        printed = True
-                if printed:
-                    print()
+    print_attributions(algorithm)
 
     import pdb; pdb.set_trace()
 
