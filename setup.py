@@ -3,13 +3,13 @@
 from distutils.core import setup
 
 setup(
-    name='NRoot',
+    name='netintent',
     version='0.0.1',
-    description='Experiment for looking at data dependencies',
+    description='Experiment for looking at neural network internal intentions',
     long_description=open('README.md', 'r').read(),
     author='David Bau',
-    author_email='david.bau@gmail.com',
-    url='https://github.com/davidbau/nroot',
+    author_email='davidbau@mit.edu',
+    url='https://github.com/davidbau/netintent',
     packages=[],
     install_requires=[
         'numpy',
