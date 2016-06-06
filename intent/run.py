@@ -19,7 +19,7 @@ from blocks.bricks.cost import CategoricalCrossEntropy, MisclassificationRate
 from blocks.extensions import FinishAfter, Timing, Printing, ProgressBar
 from blocks.extensions.monitoring import DataStreamMonitoring
 from blocks.extensions.monitoring import TrainingDataMonitoring
-from blocks.extensions.saveload import Checkpoint
+from blocks.extensions.saveload import Checkpoint, Load
 from blocks.filter import VariableFilter
 from blocks.graph import ComputationGraph
 from blocks.initialization import Constant, Uniform
@@ -35,10 +35,13 @@ from intent.attrib import AttributedGradientDescent
 from intent.attrib import ComponentwiseCrossEntropy
 from intent.attrib import print_attributions
 
+# For testing
+from blocks.roles import OUTPUT
+from blocks.filter import get_brick, get_application_call
 
 def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
          conv_sizes=None, pool_sizes=None, batch_size=500,
-         num_batches=None):
+         num_batches=None, resume=False):
     if feature_maps is None:
         feature_maps = [6, 16]
     if mlp_hiddens is None:
@@ -83,6 +86,7 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
         else:
             logging.info("Layer {} ({}) dim: {} {} {}".format(
                 i, layer.__class__.__name__, *layer.get_dim('output')))
+
     x = tensor.tensor4('features')
     y = tensor.lmatrix('targets')
 
@@ -138,6 +142,9 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
                   ProgressBar(),
                   Printing()]
 
+    if resume:
+        extensions.append(Load(save_to, True, True))
+
     model = Model(cost)
 
     main_loop = MainLoop(
@@ -156,7 +163,7 @@ if __name__ == "__main__":
                             "on the MNIST dataset.")
     parser.add_argument("--num-epochs", type=int, default=5,
                         help="Number of training epochs to do.")
-    parser.add_argument("save_to", default="mnist.pkl", nargs="?",
+    parser.add_argument("save_to", default="mnist.tar", nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
     parser.add_argument("--feature-maps", type=int, nargs='+',
@@ -172,5 +179,8 @@ if __name__ == "__main__":
                              "--conv-sizes.")
     parser.add_argument("--batch-size", type=int, default=500,
                         help="Batch size.")
+    parser.add_argument('--resume', dest='resume', action='store_true')
+    parser.add_argument('--no-resume', dest='resume', action='store_false')
+    parser.set_defaults(resume=False)
     args = parser.parse_args()
     main(**vars(args))
