@@ -15,6 +15,15 @@ from blocks.utils import shared_floatx_zeros
 from picklable_itertools.extras import equizip
 
 class ComponentwiseCrossEntropy(Brick):
+    """By-component cross entropy.
+
+    Outputs a vector with cross entropy separated out to components,
+    one for each label.  If normal cross entropy is -Sum[i](y_i log(y_hat_i)),
+    then componentwise cross entropy sepearates this into one component
+    per component of y: c_i = -y_i log(y_hat_i).  For categorical input
+    data, this vector is zero in all spots except for the labeled category,
+    at which point it takes the value -log(y_hat_i).
+    """
     @application(outputs=["components"])
     def apply(self, y, y_hat):
         # outputs a vector with cross entropy for each row
@@ -35,6 +44,7 @@ ATTRIBUTION_STATISTICS = AttributionStatisticsRole()
 
 def _create_attribution_histogram_for(param, components_size):
     buf = shared_floatx_zeros((components_size,) + param.get_value().shape)
+    # buf = tensor.TensorType('floatX', (False,) * (param.ndim + 1))()
     buf.tag.for_parameter = param
     add_role(buf, ATTRIBUTION_STATISTICS)
     return buf
@@ -65,11 +75,10 @@ class AttributedGradientDescent(GradientDescent):
         elif self.parameters is None or len(self.parameters) == 0:
             raise ValueError("can't infer jacobians; no parameters specified")
         logging.info("Taking the component jacobians")
-        jacobians = OrderedDict(
-             equizip(self.parameters, gradient.jacobian(
-                 self.components, self.parameters)))
+        jacobians = gradient.jacobian(self.components, self.parameters)
+        jacobian_map = OrderedDict(equizip(self.parameters, jacobians))
         logging.info("The component jacobian computation graph is built")
-        return jacobians
+        return jacobian_map
 
 def print_attributions(algorithm):
     param, hist = zip(*algorithm.attributions.items())

@@ -1,5 +1,5 @@
-NetIntent
----------
+Net-Intent
+----------
 
 A simple experiment for totaling up backprop using a jacobian method.
 
