@@ -106,7 +106,7 @@ def _create_maximum_activation_update(output, record, streamindex, topn):
         tind = tensor.stack((counters, fargmax), axis=2)
     cmax = tensor.concatenate((maximums, tmax), axis=0)
     cind = tensor.concatenate((indices, tind), axis=0)
-    cargsort = cmax.argsort(axis=0)[:topn]
+    cargsort = (-cmax).argsort(axis=0)[:topn]
     newmax = _apply_perm(cmax, cargsort, axis=0)
     if cind.type.ndim > 2:
         cargsort = tensor.tile(tensor.shape_padright(cargsort),
