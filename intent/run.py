@@ -36,8 +36,6 @@ from intent.attrib import ComponentwiseCrossEntropy
 from intent.attrib import print_attributions
 
 # For testing
-from blocks.roles import OUTPUT
-from blocks.filter import get_brick, get_application_call
 
 def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
          conv_sizes=None, pool_sizes=None, batch_size=500,

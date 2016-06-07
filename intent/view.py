@@ -11,38 +11,28 @@ from argparse import ArgumentParser
 
 from theano import tensor
 
-from blocks.algorithms import Scale
 from blocks.bricks.conv import Convolutional
 from blocks.bricks import Linear
 from blocks.bricks import Rectifier
 from blocks.bricks import Activation
 from blocks.bricks import Softmax
-from blocks.bricks.cost import CategoricalCrossEntropy, MisclassificationRate
 from blocks.extensions import FinishAfter, Timing, Printing, ProgressBar
 from blocks.extensions.monitoring import DataStreamMonitoring
-from blocks.extensions.monitoring import TrainingDataMonitoring
-from blocks.extensions.saveload import Checkpoint, Load
+from blocks.extensions.saveload import Checkpoint
 from blocks.filter import VariableFilter
 from blocks.graph import ComputationGraph
 from blocks.initialization import Constant, Uniform
 from blocks.main_loop import MainLoop
 from blocks.model import Model
-from blocks.monitoring import aggregation
 from blocks.serialization import load_parameters
-from blocks.roles import WEIGHT
 from fuel.datasets import MNIST
-from fuel.schemes import ShuffledScheme
 from fuel.schemes import SequentialScheme
 from fuel.streams import DataStream
 from intent.lenet import LeNet
-from intent.attrib import AttributedGradientDescent
-from intent.attrib import ComponentwiseCrossEntropy
-from intent.attrib import print_attributions
 from intent.maxact import MaximumActivationSearch
 
 # For testing
 from blocks.roles import OUTPUT
-from blocks.filter import get_brick, get_application_call
 
 def main(save_to):
     batch_size = 365
@@ -88,7 +78,6 @@ def main(save_to):
                 i, layer.__class__.__name__, *layer.get_dim('output')))
 
     x = tensor.tensor4('features')
-    y = tensor.lmatrix('targets')
 
     # Normalize input and apply the convnet
     probs = convnet.apply(x)

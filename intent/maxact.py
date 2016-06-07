@@ -1,24 +1,15 @@
-import logging
-import numpy as np
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict
 
 from theano import tensor
-from theano import gradient
-from theano.sandbox import cuda
 
 from blocks.algorithms import UpdatesAlgorithm
-from blocks.bricks import application
-from blocks.bricks import Linear
-from blocks.bricks.base import Brick
 from blocks.filter import get_brick
 from blocks.roles import PersistentRole
 from blocks.roles import add_role
 from blocks.utils import shared_floatx_zeros
-from picklable_itertools.extras import equizip
 import theano
 import numpy
 import numbers
-from theano.printing import Print
 
 class MaximumActivationStatisticsRole(PersistentRole):
     pass
@@ -50,7 +41,6 @@ def _apply_perm(data, indices, axis=0):
     """
     ndim = data.type.ndim
     shape = data.shape
-    slicedataay = []
     return data[tuple(indices if a == axis else
             _axis_count(shape, a, ndim) for a in range(ndim))]
 
@@ -68,7 +58,6 @@ def _apply_index(data, indices, axis=0):
     """
     ndim = data.type.ndim
     shape = data.shape
-    slicedataay = []
     return data[tuple(indices if a == axis else
             _axis_count(shape, a, ndim - 1) if a < axis else
             _axis_count(shape, a - 1, ndim - 1)
