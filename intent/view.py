@@ -149,7 +149,7 @@ def main(save_to):
                     imagenum = indices[index, unit]
                     filmstrip.set_image((index, unit),
                             examples.get_data(imagenum)[0])
-        filmstrip.save(layer.name + '.jpg')
+        filmstrip.save(layer.name + '_maxact.jpg')
 
 
 if __name__ == "__main__":
