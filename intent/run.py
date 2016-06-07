@@ -64,7 +64,7 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
                     pooling_sizes=zip(pool_sizes, pool_sizes),
                     top_mlp_activations=mlp_activations,
                     top_mlp_dims=mlp_hiddens + [output_size],
-                    border_mode='full',
+                    border_mode='valid',
                     weights_init=Uniform(width=.2),
                     biases_init=Constant(0))
     # We push initialization config to set different initialization schemes

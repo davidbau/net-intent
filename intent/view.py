@@ -20,6 +20,7 @@ from blocks.extensions import FinishAfter, Timing, Printing, ProgressBar
 from blocks.extensions.monitoring import DataStreamMonitoring
 from blocks.extensions.saveload import Checkpoint
 from blocks.filter import VariableFilter
+from blocks.filter import get_brick
 from blocks.graph import ComputationGraph
 from blocks.initialization import Constant, Uniform
 from blocks.main_loop import MainLoop
@@ -30,6 +31,10 @@ from fuel.schemes import SequentialScheme
 from fuel.streams import DataStream
 from intent.lenet import LeNet
 from intent.maxact import MaximumActivationSearch
+from intent.filmstrip import Filmstrip
+from intent.rf import make_mask
+from intent.rf import layerarray_fieldmap
+import numpy
 
 # For testing
 from blocks.roles import OUTPUT
@@ -56,7 +61,7 @@ def main(save_to):
                     pooling_sizes=zip(pool_sizes, pool_sizes),
                     top_mlp_activations=mlp_activations,
                     top_mlp_dims=mlp_hiddens + [output_size],
-                    border_mode='full',
+                    border_mode='valid',
                     weights_init=Uniform(width=.2),
                     biases_init=Constant(0))
     # We push initialization config to set different initialization schemes
@@ -118,6 +123,33 @@ def main(save_to):
         extensions=extensions)
 
     main_loop.run()
+
+    examples = mnist_test.get_example_stream()
+    example = examples.get_data(0)[0]
+    layers = convnet.layers
+    for output, record in algorithm.maximum_activations.items():
+        layer = get_brick(output)
+        activations, indices, snapshots = (
+                r.get_value() if r else None for r in record[1:])
+        filmstrip = Filmstrip(
+            example.shape[-2:], (indices.shape[1], indices.shape[0]),
+            background='blue')
+        if layer in layers:
+            fieldmap = layerarray_fieldmap(layers[0:layers.index(layer) + 1])
+            for unit in range(indices.shape[1]):
+                for index in range(100):
+                    mask = make_mask(example.shape[-2:], fieldmap, numpy.clip(
+                        snapshots[index, unit, :, :], 0, numpy.inf))
+                    imagenum = indices[index, unit, 0]
+                    filmstrip.set_image((index, unit),
+                            examples.get_data(imagenum)[0], mask)
+        else:
+            for unit in range(indices.shape[1]):
+                for index in range(100):
+                    imagenum = indices[index, unit]
+                    filmstrip.set_image((index, unit),
+                            examples.get_data(imagenum)[0])
+        filmstrip.save(layer.name + '.jpg')
 
 
 if __name__ == "__main__":
