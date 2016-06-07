@@ -116,7 +116,7 @@ def main(save_to):
     params = load_parameters(open(save_to, 'rb'))
     model.set_parameter_values(params)
 
-    learning_rate = shared_floatx(0.001, 'learning_rate')
+    learning_rate = shared_floatx(0.01, 'learning_rate')
     unit = shared_floatx(0, 'unit', dtype='int64')
     for output in outs:
         dims = get_brick(output).get_dims(['output'])[0]
@@ -142,9 +142,9 @@ def main(save_to):
             unit.set_value(u)
             x.set_value(random_init)
             print('layer', layer.name, 'unit', u)
-            for index in range(100000):
+            for index in range(5000):
                 c = fn()[0]
-                if index % 10000 == 0:
+                if index % 1000 == 0:
                     print('cost', c)
                     result = x.get_value()
                     for i2 in range(100):
