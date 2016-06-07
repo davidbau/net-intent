@@ -41,6 +41,9 @@ def _apply_perm(data, indices, axis=0):
     """
     ndim = data.type.ndim
     shape = data.shape
+    if indices.type.ndim < ndim:
+        indices = tensor.shape_padright(indices,
+                n_ones=ndim-indices.type.ndim)
     return data[tuple(indices if a == axis else
             _axis_count(shape, a, ndim) for a in range(ndim))]
 
@@ -58,6 +61,9 @@ def _apply_index(data, indices, axis=0):
     """
     ndim = data.type.ndim
     shape = data.shape
+    if indices.type.ndim < ndim - 1:
+        indices = tensor.shape_padright(indices,
+                n_ones=ndim-indices.type.ndim-1)
     return data[tuple(indices if a == axis else
             _axis_count(shape, a, ndim - 1) if a < axis else
             _axis_count(shape, a - 1, ndim - 1)
@@ -70,8 +76,10 @@ def _create_maximum_activation_for(output, topn, dims=None):
     if isinstance(dims, numbers.Integral):
         dims = (dims,)
         index = theano.shared(numpy.zeros((topn, dims[0]), dtype=numpy.int))
+        snapshot = None
     else:
-        index = theano.shared(numpy.zeros((topn, dims[0], 2), dtype=numpy.int))
+        index = theano.shared(numpy.zeros((topn, dims[0], 3), dtype=numpy.int))
+        snapshot = theano.shared(numpy.zeros((topn,) + dims))
 
     quantity = shared_floatx_zeros((topn, dims[0]))
 
@@ -80,13 +88,13 @@ def _create_maximum_activation_for(output, topn, dims=None):
     quantity.tag.for_output = output
     add_role(quantity, MAXIMUM_ACTIVATION_QUANTITY)
 
-    return (dims, quantity, index)
+    return (dims, quantity, index, snapshot)
 
 def _create_maximum_activation_update(output, record, streamindex, topn):
     """
     Calculates update of the topn maximums for one batch of outputs.
     """
-    dims, maximums, indices = record
+    dims, maximums, indices, snapshot = record
     counters = tensor.tile(tensor.shape_padright(
         tensor.arange(output.shape[0]) + streamindex), (1, output.shape[1]))
     if len(dims) == 1:
@@ -97,22 +105,26 @@ def _create_maximum_activation_update(output, record, streamindex, topn):
     else:
         # output is a 4d tensor: fmax flattens it to 3d
         fmax = output.flatten(ndim=3)
-        # fargmax is a 2d tensor containing maximum locations for each output
+        # fargmax is a 2d tensor containing rolled maximum locations
         fargmax = fmax.argmax(axis=2)
-        # now take the maximum. tmax is 2d, (cases, units) -> activation
+        # fetch the maximum. tmax is 2d, (cases, units) -> activation
         tmax = _apply_index(fmax, fargmax, axis=2)
-        # tind is a 3d tensor (cases, units, 2) -> case_index, maxloc_index
+        # targmax is a tuple that separates rolled-up location into (x, y)
+        targmax = divmod(fargmax, dims[2])
+        # tind is a 3d tensor (cases, units, 3) -> case_index, maxloc
         # this will match indices which is a 3d tensor also
-        tind = tensor.stack((counters, fargmax), axis=2)
+        tind = tensor.stack((counters, ) + targmax, axis=2)
     cmax = tensor.concatenate((maximums, tmax), axis=0)
     cind = tensor.concatenate((indices, tind), axis=0)
     cargsort = (-cmax).argsort(axis=0)[:topn]
     newmax = _apply_perm(cmax, cargsort, axis=0)
-    if cind.type.ndim > 2:
-        cargsort = tensor.tile(tensor.shape_padright(cargsort),
-                (1, 1, cind.shape[2]))
     newind = _apply_perm(cind, cargsort, axis=0)
-    return [(maximums, newmax), (indices, newind)]
+    updates = [(maximums, newmax), (indices, newind)]
+    if snapshot:
+        csnap = tensor.concatenate((snapshot, output), axis=0)
+        newsnap = _apply_perm(csnap, cargsort, axis=0)
+        updates.append((snapshot, newsnap))
+    return updates
 
 class MaximumActivationSearch(UpdatesAlgorithm):
     """Algorithm for identifying maximum activations for individual neurons.
