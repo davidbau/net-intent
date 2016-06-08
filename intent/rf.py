@@ -122,6 +122,19 @@ def _gaussian(shape, sigmafrac=0.2):
     return (_gaussian_1d(shape[0], sigmafrac * shape[0])[:, numpy.newaxis] *
             _gaussian_1d(shape[1], sigmafrac * shape[1])[numpy.newaxis, :])
 
+def center_location(fieldmap, location):
+    if isinstance(location, numpy.ndarray):
+        offset, size, step = fieldmap
+        broadcast = (numpy.newaxis, ) * (len(location.shape) - 1) + (
+                        slice(None),)
+        step = numpy.array(step)[broadcast]
+        offset = numpy.array(offset)[broadcast]
+        size = numpy.array(size)[broadcast]
+        return location * step + offset + size // 2
+    else:
+        offset, shape = receptive_field(location, fieldmap)
+        return tuple(o + s // 2 for o, s in zip(offset, shape))
+
 def _centered_slice(fieldmap, activation_shape):
     offset, size, step = fieldmap
     return tuple(slice(s // 2 + o, s // 2 + o + a * t, t)

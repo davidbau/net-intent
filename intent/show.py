@@ -36,6 +36,7 @@ from intent.maxact import MaximumActivationSearch
 from intent.filmstrip import Filmstrip
 from intent.rf import make_mask
 from intent.rf import layerarray_fieldmap
+from prior import create_fair_basis
 from theano import gradient
 from theano import tensor
 import theano
@@ -93,20 +94,23 @@ def main(save_to):
     random_init = (numpy.random.rand(100, 1, 28, 28) * 128).astype('float32')
 
     mnist_test = MNIST(("test",), sources=['features', 'targets'])
-    state = mnist_test.open()
+    basis = create_fair_basis(mnist_test, 10, 10)
 
-    basis = numpy.zeros((100, 1, 28, 28), dtype=theano.config.floatX)
-    counters = [0] * 10
-    index = 0
-    while min(counters) < 10:
-        feature, target = mnist_test.get_data(state=state, request=[index])
-        target = target[0, 0]
-        feature = feature / 256
-        if counters[target] < 10:
-            basis[target + counters[target] * 10, :, :, :] = feature[0, :, :, :]
-            counters[target] += 1
-        index += 1
-    mnist_test.close(state=state)
+#    state = mnist_test.open()
+#
+#    basis = numpy.zeros((100, 1, 28, 28), dtype=theano.config.floatX)
+#    counters = [0] * 10
+#    index = 0
+#    while min(counters) < 10:
+#        feature, target = mnist_test.get_data(state=state, request=[index])
+#        target = target[0, 0]
+#        feature = feature / 256
+#        if counters[target] < 10:
+#            basis[target + counters[target] * 10, :, :, :] = feature[0, :, :, :]
+#            counters[target] += 1
+#        index += 1
+#    mnist_test.close(state=state)
+
     
     # b = shared_floatx(basis)
     # random_init = numpy.rand.random(100, 1000)

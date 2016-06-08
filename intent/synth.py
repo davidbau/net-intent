@@ -35,6 +35,7 @@ from intent.maxact import MaximumActivationSearch
 from intent.filmstrip import Filmstrip
 from intent.rf import make_mask
 from intent.rf import layerarray_fieldmap
+from prior import create_fair_basis
 from theano import gradient
 from theano import tensor
 import theano
@@ -87,21 +88,15 @@ def main(save_to):
             logging.info("Layer {} ({}) dim: {} {} {}".format(
                 i, layer.__class__.__name__, *layer.get_dim('output')))
 
-    random_init = (numpy.random.rand(100, 1, 28, 28) * 128).astype('float32')
-
-    mnist_test = MNIST(("test",), sources=['features'])
-    mnist_test_stream = DataStream.default_stream(
-        mnist_test,
-        iteration_scheme=SequentialScheme(
-            mnist_test.num_examples, 100))
-    random_init = (next(mnist_test_stream.get_epoch_iterator())[0])
+    mnist_test = MNIST(("test",), sources=['features', 'targets'])
+    basis_init = create_fair_basis(mnist_test, 10, 2)
 
     # b = shared_floatx(basis)
     # random_init = numpy.rand.random(100, 1000)
     # r = shared_floatx(random_init)
     # rn = r / r.norm(axis=1)
     # x = tensor.dot(rn, tensor.shape_padright(b))
-    x = shared_floatx(random_init)
+    x = shared_floatx(basis_init)
 
     # Normalize input and apply the convnet
     probs = convnet.apply(x)
@@ -122,12 +117,16 @@ def main(save_to):
         dims = get_brick(output).get_dims(['output'])[0]
         if isinstance(dims, numbers.Integral):
             dims = (dims, )
-            costvec = -tensor.log(tensor.nnet.softmax(output)[:,unit].flatten())
+            costvec = -tensor.log(tensor.nnet.softmax(
+                output)[:,unit].flatten())
         else:
             flatout = output.flatten(ndim=3)
             maxout = flatout.max(axis=2)
-            costvec = -tensor.log(tensor.nnet.softmax(maxout)[:,unit].flatten())
-        cost = costvec.sum()
+            costvec = -tensor.log(tensor.nnet.softmax(
+                maxout)[:,unit].flatten())
+        # Add a regularization to favor gray images.
+        cost = costvec.sum() + (x - 0.5).norm(2) * (
+                10.0 / basis_init.shape[0])
         grad = gradient.grad(cost, x)
         stepx = x - learning_rate * grad
         normx = stepx / tensor.shape_padright(
@@ -135,23 +134,23 @@ def main(save_to):
         newx = tensor.clip(normx, 0, 1)
         fn = theano.function([], [cost], updates=[(x, newx)])
         filmstrip = Filmstrip(
-            random_init.shape[-2:], (dims[0], random_init.shape[0]),
+            basis_init.shape[-2:], (dims[0], basis_init.shape[0]),
             background='red')
         layer = get_brick(output)
         for u in range(dims[0]):
             unit.set_value(u)
-            x.set_value(random_init)
+            x.set_value(basis_init)
             print('layer', layer.name, 'unit', u)
             for index in range(5000):
                 c = fn()[0]
                 if index % 1000 == 0:
                     print('cost', c)
                     result = x.get_value()
-                    for i2 in range(100):
+                    for i2 in range(basis_init.shape[0]):
                         filmstrip.set_image((i2, u), result[i2,:,:,:] * 255)
                     filmstrip.save(layer.name + '_synth.jpg')
             result = x.get_value()
-            for index in range(100):
+            for index in range(basis_init.shape[0]):
                 filmstrip.set_image((index, u), result[index,:,:,:] * 255)
             filmstrip.save(layer.name + '_synth.jpg')
 
