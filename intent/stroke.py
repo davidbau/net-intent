@@ -88,7 +88,7 @@ def main(save_to):
     random_init = (numpy.random.rand(100, 1, 28, 28) * 128).astype('float32')
     layers = [l for l in convnet.layers if isinstance(l, Convolutional)]
     mnist_test = MNIST(("test",), sources=['features', 'targets'])
-    basis_init = create_fair_basis(mnist_test, 10, 20)
+    basis_init = create_fair_basis(mnist_test, 10, 10)
     basis_set = make_shifted_basis(basis_init, convnet, layers)
 
     for layer, basis in zip(layers, basis_set):
@@ -121,7 +121,7 @@ def main(save_to):
         params = load_parameters(open(save_to, 'rb'))
         model.set_parameter_values(params)
 
-        learning_rate = shared_floatx(0.01, 'learning_rate')
+        learning_rate = shared_floatx(0.03, 'learning_rate')
         # We will try to do all units at once.
         # unit = shared_floatx(0, 'unit', dtype='int64')
         # But we are only doing one layer at once.
@@ -137,22 +137,26 @@ def main(save_to):
         else:
             # Conv case: output is 4d: (probed_units, units, y, x)
             unitrange = tensor.arange(dims[0])
+            print('dims is', dims)
             costvec = -tensor.log(tensor.nnet.softmax(output[
                 unitrange, unitrange, dims[1] // 2, dims[2] // 2]).
                 flatten())
         cost = costvec.sum()
+        # grad is dims (probed_units, basis_size)
         grad = gradient.grad(cost, coefficients)
         stepc = coefficients - learning_rate * grad
-        newc = stepc / tensor.shape_padright(
-                stepc.flatten(ndim=2).mean(axis=1), n_ones=1)
+        newc = stepc / tensor.shape_padright(stepc.mean(axis=1))
         fn = theano.function([], [cost, x], updates=[(coefficients, newc)])
         filmstrip = Filmstrip(
             random_init.shape[-2:], (dims[0], 1),
             background='red')
         layer = get_brick(output)
-        for index in range(10000):
+        learning_rate.set_value(0.1)
+        for index in range(20000):
             c, result = fn()
             if index % 1000 == 0:
+                learning_rate.set_value(numpy.cast[theano.config.floatX](
+                    learning_rate.get_value() * 0.8))
                 print('cost', c)
                 for u in range(dims[0]):
                     filmstrip.set_image((0, u), result[u,:,:,:] * 255)
