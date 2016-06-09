@@ -39,7 +39,8 @@ def _cropped_slices(offset, size):
     elif offset > 0:
         size -= offset
 
-    return (slice(corner, corner + size), slice(offset, offset + size))
+    # return (slice(corner, corner + size), slice(offset, offset + size))
+    return (slice(offset, offset + size), slice(corner, corner + size))
 
 def _center_slices(center, shape):
     # offset = tuple(s // 2 - c for s, c in zip(shape, center))
@@ -66,11 +67,8 @@ def make_shifted_basis(basis, convnet, layers):
         fargmax = flat_result.argmax(axis=2)
         act_locations = numpy.stack(
                 divmod(fargmax, result.shape[2]), axis=-1)
-        print(layer.name, 'shape is', result.shape, 'and fieldmap is', fieldmap)
-        print('max act locations', act_locations)
         # imlocations is 3d (basis_case, unit, 2=[x,y])
         im_locations = center_location(fieldmap, act_locations)
-        print('image locations', im_locations)
         # basis is 4d (basis_case, 1, dimx, dimy)
         # newbasis will be 5d (unit, basis_case, 1, dimx, dimy)
         newbasis = numpy.zeros((result.shape[1],) + basis.shape,

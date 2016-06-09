@@ -88,7 +88,7 @@ def main(save_to):
     random_init = (numpy.random.rand(100, 1, 28, 28) * 128).astype('float32')
     layers = [l for l in convnet.layers if isinstance(l, Convolutional)]
     mnist_test = MNIST(("test",), sources=['features', 'targets'])
-    basis_init = create_fair_basis(mnist_test, 10, 10)
+    basis_init = create_fair_basis(mnist_test, 10, 50)
     basis_set = make_shifted_basis(basis_init, convnet, layers)
 
     for layer, basis in zip(layers, basis_set):
