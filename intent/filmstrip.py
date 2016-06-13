@@ -16,7 +16,14 @@ class Filmstrip:
             self.background)
 
     def set_image(self, grid_location, image_data, mask_data=None,
-                    negative=None, zeromean=False):
+                    negative=None, zeromean=False, unit_range=None):
+        if unit_range is None and not numpy.issubdtype(
+                        image_data.dtype, numpy.integer):
+            unit_range = True
+        if unit_range:
+            image_data = numpy.clip(image_data * 255, 0, 255)
+        if len(image_data.shape) == 2:
+            image_data = image_data[numpy.newaxis, :, :]
         if negative is None:
             negative = image_data.shape[0] == 1
         if zeromean:

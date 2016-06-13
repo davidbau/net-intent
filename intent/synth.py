@@ -147,11 +147,11 @@ def main(save_to):
                     print('cost', c)
                     result = x.get_value()
                     for i2 in range(basis_init.shape[0]):
-                        filmstrip.set_image((i2, u), result[i2,:,:,:] * 255)
+                        filmstrip.set_image((i2, u), result[i2,:,:,:])
                     filmstrip.save(layer.name + '_synth.jpg')
             result = x.get_value()
             for index in range(basis_init.shape[0]):
-                filmstrip.set_image((index, u), result[index,:,:,:] * 255)
+                filmstrip.set_image((index, u), result[index,:,:,:])
             filmstrip.save(layer.name + '_synth.jpg')
 
 if __name__ == "__main__":

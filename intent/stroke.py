@@ -144,7 +144,7 @@ def main(save_to):
         cost = costvec.sum()
         # grad is dims (probed_units, basis_size)
         grad = gradient.grad(cost, coefficients)
-        stepc = coefficients - learning_rate * grad
+        stepc = coefficients # - learning_rate * grad
         newc = stepc / tensor.shape_padright(stepc.mean(axis=1))
         fn = theano.function([], [cost, x], updates=[(coefficients, newc)])
         filmstrip = Filmstrip(
@@ -159,10 +159,10 @@ def main(save_to):
                     learning_rate.get_value() * 0.8))
                 print('cost', c)
                 for u in range(dims[0]):
-                    filmstrip.set_image((0, u), result[u,:,:,:] * 255)
+                    filmstrip.set_image((0, u), result[u,:,:,:])
                     filmstrip.save(layer.name + '_stroke.jpg')
             for u in range(dims[0]):
-                filmstrip.set_image((0, u), result[u,:,:,:] * 255)
+                filmstrip.set_image((0, u), result[u,:,:,:])
             filmstrip.save(layer.name + '_stroke.jpg')
 
 if __name__ == "__main__":

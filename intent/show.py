@@ -146,7 +146,7 @@ def main(save_to):
                     mask = make_mask(basis.shape[-2:], fieldmap, numpy.clip(
                         snapshots[index, unit, :, :], 0, numpy.inf))
                     filmstrip.set_image((index, unit),
-                        basis[index, :, :, :] * 255, mask)
+                        basis[index, :, :, :], mask)
             filmstrip.save(layer.name + '_show.jpg')
 
 if __name__ == "__main__":

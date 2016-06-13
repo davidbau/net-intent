@@ -13,6 +13,7 @@ from blocks.roles import PersistentRole
 from blocks.roles import add_role
 from blocks.utils import shared_floatx_zeros
 from picklable_itertools.extras import equizip
+import numpy
 
 class ComponentwiseCrossEntropy(Brick):
     """By-component cross entropy.
@@ -52,6 +53,9 @@ def _create_attribution_histogram_for(param, components_size):
 def _create_attribution_updates(attribution, jacobian):
     return (attribution, attribution + jacobian)
 
+def _create_influence_updates(influence, jacobian):
+    return (influence, influence + abs(jacobian))
+
 class AttributedGradientDescent(GradientDescent):
     def __init__(self, components=None, components_size=None,
                  jacobians=None, **kwargs):
@@ -64,10 +68,17 @@ class AttributedGradientDescent(GradientDescent):
         self.attributions = OrderedDict(
             [(param, _create_attribution_histogram_for(param, components_size))
                 for param in self.parameters])
+        self.influences = OrderedDict(
+            [(param, _create_attribution_histogram_for(param, components_size))
+                for param in self.parameters])
         self.attribution_updates = OrderedDict(
             [_create_attribution_updates(self.attributions[param],
                 self.jacobians[param]) for param in self.parameters])
+        self.influence_updates = OrderedDict(
+            [_create_influence_updates(self.influences[param],
+                self.jacobians[param]) for param in self.parameters])
         self.add_updates(self.attribution_updates)
+        self.add_updates(self.influence_updates)
 
     def _compute_jacobians(self):
         if self.components is None or self.components.ndim == 0:
@@ -82,8 +93,10 @@ class AttributedGradientDescent(GradientDescent):
 
 def print_attributions(algorithm):
     param, hist = zip(*algorithm.attributions.items())
+    _, ihist = zip(*algorithm.influences.items())
     for pindex in range(0, len(hist)):
         allvals = hist[pindex].get_value()
+        allinfs = ihist[pindex].get_value()
         pvals = param[pindex].get_value()
         num_classes = allvals.shape[0]
         # if np.prod(allvals.shape[1:]) <= 700:
@@ -92,23 +105,32 @@ def print_attributions(algorithm):
         if (hist[pindex].tag.for_parameter.name == 'W' and isinstance(
               hist[pindex].tag.for_parameter.tag.annotations[0], Linear)):
             allvals = np.transpose(allvals, (0, 2, 1))
+            allinfs = np.transpose(allinfs, (0, 2, 1))
             pvals = np.transpose(pvals, (1, 0))
         else:
             allvals = np.reshape(allvals, allvals.shape[0:2] + (-1,))
+            allinfs = np.reshape(allinfs, allinfs.shape[0:2] + (-1,))
             pvals = np.reshape(pvals, (pvals.shape[0], -1))
         for nindex in range(0, allvals.shape[1]):
             vals = allvals[:,nindex,:]
+            infs = allinfs[:,nindex,:]
             name = ('unit %d' % nindex) if allvals.shape[1] > 1 else 'units'
-            print('Attribution for parameter %s for layer %s %s' % (
-                hist[pindex].tag.for_parameter.name,
-                hist[pindex].tag.for_parameter.tag.annotations[0].name,
-                name))
             # Individual weight histograms - commented out.
-            if False:
-                svals = np.sort(vals, axis=0).reshape((vals.shape[0], -1))
-                sinds = np.argsort(vals, axis=0).reshape((vals.shape[0], -1))
+            if True:
+                svals = np.sort(vals, axis=0)
+                sinds = np.argsort(vals, axis=0)
+                sinfs = infs[
+                  sinds,
+                  numpy.arange(vals.shape[1])[numpy.newaxis, :]]
+                # svals = svals.reshape((vals.shape[0], -1))
+                # sinds = sinds.reshape((vals.shape[0], -1))
+                # sinfs = sinfs.reshape((vals.shape[0], -1))
                 for j in range(svals.shape[1]):
-                    print('Sorted hist for weight', j, pvals[nindex, j])
+                    print('Sorted hist for layer %s %s %s %d %f' % (
+                        hist[pindex].tag.for_parameter.name,
+                        hist[pindex].tag.for_parameter.tag.annotations[0].name,
+                        name,
+                        j, pvals[nindex, j]))
                     limit = max(abs(svals[:,j]))
                     for k in range(svals.shape[0]):
                         n = int(np.nan_to_num(32 * svals[k, j] / limit))
@@ -116,8 +138,12 @@ def print_attributions(algorithm):
                             s = (32 + n) * ' ' + (-n) * '#'
                         else:
                             s = 32 * ' ' + (n + 1) * '#'
-                        print(s, svals[k, j], sinds[k, j])
+                        print(s, svals[k, j], sinds[k, j], sinfs[k, j])
 
+            print('Attribution for parameter %s for layer %s %s' % (
+                hist[pindex].tag.for_parameter.name,
+                hist[pindex].tag.for_parameter.tag.annotations[0].name,
+                name))
             bounds = sorted(zip(
                 vals.argmin(axis=0).flatten(),
                 vals.argmax(axis=0).flatten()))
