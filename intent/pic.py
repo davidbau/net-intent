@@ -42,7 +42,7 @@ def main(save_to, num_epochs, resume=False, **kwargs):
         with open(save_to, 'rb') as source:
             main_loop = load(source)
     else:
-        main_loop.create_main_loop(save_to, num_epochs, **kwargs)
+        main_loop = create_main_loop(save_to, num_epochs, **kwargs)
 
     if main_loop.status['epochs_done'] < num_epochs:
         main_loop.run()
@@ -131,9 +131,11 @@ def create_main_loop(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
         cost=cost,
         parameters=cg.parameters,
         case_costs=case_costs,
+        case_labels=y,
         pics=x,
         batch_size=batch_size,
         pic_size=image_size,
+        label_count=output_size,
         step_rule=Scale(learning_rate=0.1))
 
     # `Timing` extension reports time for reading data, aggregating a batch
@@ -161,8 +163,7 @@ def create_main_loop(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
         model=model,
         extensions=extensions)
 
-    # print_attributions(algorithm)
-    # Now, create images.
+    return main_loop
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

@@ -32,45 +32,47 @@ class GradpicStatisticsRole(PersistentRole):
 # role for gradpic historgram
 GRADPIC_STATISTICS = GradpicStatisticsRole()
 
-def _create_gradpic_histogram_for(param, pic_size):
+def _create_gradpic_histogram_for(param, pic_size, label_count):
     # The gradpic histogram is a 2d-array of pic_size.
     # For a 3d parameter, that ends up being a 5d tensor.
     # For a 1d parameter, that's a 3d tensor.
-    shape = param.get_value().shape + pic_size
+    shape = param.get_value().shape + (label_count,) + pic_size
     print('param', param, 'gets histogram with shape', shape)
-    buf = shared_floatx_zeros(param.get_value().shape + pic_size)
+    buf = shared_floatx_zeros(shape)
     buf.tag.for_parameter = param
     add_role(buf, GRADPIC_STATISTICS)
     return buf
 
-def _create_gradpic_updates(gradpic, jacobian, pic):
-    from theano.printing import Print
-    # Gradpic: (units1, units2, picy, picx)
-    # pic: (cases, picy, pix)
-    # jacobian: (cases, units1, units2)
-    print('gradpic', gradpic.ndim, 'pic', pic.ndim, 'jacobian', jacobian.ndim)
-    # padded_pic = Print('padded_pic', attrs=['shape'])(tensor.shape_padleft(pic, n_ones=jacobian.ndim))
-    # padded_jacobian = Print('padded_jacobian', attrs=['shape'])(tensor.shape_padright(jacobian, n_ones=pic.ndim))
-    return (gradpic,
-            gradpic + tensor.tensordot(jacobian, pic, axes=((0,), (0,))))
+def _create_gradpic_updates(gradpic, jacobian, attributed_pic):
+    # Updates gradpic which is (units1, units2.., labels, picy, picx)
+    # By dotting jacobian: (cases, units1, units2..) and
+    # attributed_pic (cases, labels, picy, picx)
+    return (gradpic, gradpic -
+            tensor.tensordot(jacobian, attributed_pic, axes=((0,), (0,))))
 
 class GradpicGradientDescent(GradientDescent):
-    def __init__(self, case_costs=None, pics=None,
-                    batch_size=None, pic_size=None, **kwargs):
+    def __init__(self, case_costs=None, pics=None, case_labels=None,
+                    batch_size=None, pic_size=None, label_count=None, **kwargs):
         super(GradpicGradientDescent, self).__init__(**kwargs)
         center_val = 0.5
         self.input_pics = pics
         self.case_costs = case_costs
         self.batch_size = batch_size
+        self.label_count = label_count
         self.jacobians = self._compute_jacobians()
         self.gradpics = OrderedDict(
-            [(param, _create_gradpic_histogram_for(param, pic_size))
+          [(param, _create_gradpic_histogram_for(param, pic_size, label_count))
                 for param in self.parameters])
+        # attributes pics: (cases, picy, picx) to (cases, labels, picy, picx)
+        attributed_pics = tensor.batched_tensordot(
+            tensor.extra_ops.to_one_hot(case_labels.flatten(), label_count),
+            pics[:, 0, :, :], axes=0)
+        attributed_pics = attributed_pics
         self.gradpic_updates = OrderedDict(
             [_create_gradpic_updates(
                 self.gradpics[param],
                 self.jacobians[param],
-                pics[:,0,:,:]) for param in self.parameters])
+                attributed_pics) for param in self.parameters])
         self.add_updates(self.gradpic_updates)
 
     def _compute_jacobians(self):
@@ -89,23 +91,26 @@ class GradpicGradientDescent(GradientDescent):
             layername = param.tag.annotations[0].name
             paramname = param.name
             allpics = gradpic.get_value()
-            if len(allpics.shape) == 6:
+            if len(allpics.shape) == 7:
                 allpics = allpics.reshape(
-                                (allpics.shape[0], -1) + allpics.shape[-2:])
-            has_subunits = len(allpics.shape) == 4
+                                (allpics.shape[0], -1) + allpics.shape[-3:])
+            has_subunits = len(allpics.shape) == 5
             units = allpics.shape[0]
             subunits = allpics.shape[1] if has_subunits else 1
             filmstrip = Filmstrip(image_shape=allpics.shape[-2:],
-                            grid_shape=(units, subunits))
+                            grid_shape=(units, subunits * self.label_count))
             for unit in range(units):
                 for subunit in range(subunits):
                     if has_subunits:
-                        im = allpics[unit, subunit, :, :]
+                        im = allpics[unit, subunit, :, :, :]
                     else:
-                        im = allpics[unit, :, :]
+                        im = allpics[unit, :, :, :]
                     imin = im.min()
                     imax = im.max()
                     im = (im - imin) / (imax - imin + 1e-9)
-                    filmstrip.set_image((subunit, unit), im)
+                    for label in range(self.label_count):
+                        filmstrip.set_image(
+                                (subunit * self.label_count + label, unit),
+                                im[label, :, :])
             filmstrip.save('%s_%s_gradpic.jpg' % (layername, paramname))
 
