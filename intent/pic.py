@@ -17,6 +17,7 @@ from blocks.bricks import Activation
 from blocks.bricks import Softmax
 from blocks.bricks.cost import CategoricalCrossEntropy, MisclassificationRate
 from blocks.extensions import FinishAfter, Timing, Printing, ProgressBar
+from blocks.extensions import SimpleExtension
 from blocks.extensions.monitoring import DataStreamMonitoring
 from blocks.extensions.monitoring import TrainingDataMonitoring
 from blocks.extensions.saveload import Checkpoint, Load
@@ -35,7 +36,19 @@ from intent.lenet import LeNet
 from intent.synpic import SynpicGradientDescent
 from intent.synpic import CasewiseCrossEntropy
 
-# For testing
+class SaveImages(SimpleExtension):
+    def __init__(self, algorithm=None, pattern=None, **kwargs):
+        self.algorithm = algorithm
+        self.count = 0
+        if pattern is None:
+            pattern = 'synpics/%s_%04d.jpg'
+        self.pattern = pattern
+        super(SaveImages, self).__init__(**kwargs)
+
+    def do(self, which_callback, *args):
+        pattern = self.pattern % ('%s_%s', self.count)
+        self.count += 1
+        self.algorithm.save_images(pattern=pattern)
 
 def main(save_to, num_epochs, resume=False, **kwargs):
     if resume:
@@ -148,6 +161,7 @@ def create_main_loop(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
     extensions = [Timing(),
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
+                  SaveImages(algorithm=algorithm, after_batch=True),
                   DataStreamMonitoring(
                       [cost, error_rate],
                       mnist_test_stream,

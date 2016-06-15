@@ -70,8 +70,8 @@ class SynpicGradientDescent(GradientDescent):
         #     tensor.extra_ops.to_one_hot(case_labels.flatten(), label_count),
         #     pics[:, 0, :, :], axes=0)
         zeroed_pics = pics - 0.5
-        focused_pics = zeroed_pics * tensor.clip(zeroed_pics *
-                gradient.grad(case_costs.mean(), pics), 0, numpy.inf)
+        focused_pics = zeroed_pics * abs(
+                gradient.grad(case_costs.mean(), pics))
         attributed_pics = tensor.batched_tensordot(
             tensor.extra_ops.to_one_hot(
                 case_labels.flatten(), label_count),
@@ -95,7 +95,9 @@ class SynpicGradientDescent(GradientDescent):
         logging.info("The synpic jacobian computation graph is built")
         return jacobian_map
 
-    def save_images(self):
+    def save_images(self, pattern=None):
+        if pattern is None:
+            pattern = '%s_%s_synpic.jpg'
         for param, synpic in self.synpics.items():
             layername = param.tag.annotations[0].name
             paramname = param.name
@@ -122,5 +124,5 @@ class SynpicGradientDescent(GradientDescent):
                         filmstrip.set_image(
                                 (subunit * self.label_count + label, unit),
                                 im[label, :, :])
-            filmstrip.save('%s_%s_synpic.jpg' % (layername, paramname))
+            filmstrip.save(pattern % (layername, paramname))
 
