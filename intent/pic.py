@@ -26,14 +26,14 @@ from blocks.initialization import Constant, Uniform
 from blocks.main_loop import MainLoop
 from blocks.model import Model
 from blocks.monitoring import aggregation
-from blocks.roles import WEIGHT
+from blocks.roles import WEIGHT, BIAS
 from blocks.serialization import load
 from fuel.datasets import MNIST
 from fuel.schemes import ShuffledScheme
 from fuel.streams import DataStream
 from intent.lenet import LeNet
-from intent.gradpic import GradpicGradientDescent
-from intent.gradpic import CasewiseCrossEntropy
+from intent.synpic import SynpicGradientDescent
+from intent.synpic import CasewiseCrossEntropy
 
 # For testing
 
@@ -126,10 +126,14 @@ def create_main_loop(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
         iteration_scheme=ShuffledScheme(
             mnist_test.num_examples, batch_size))
 
+    # Generate pics for biases
+    biases = VariableFilter(roles=[BIAS])(cg.parameters)
+
     # Train with simple SGD
-    algorithm = GradpicGradientDescent(
+    algorithm = SynpicGradientDescent(
         cost=cost,
         parameters=cg.parameters,
+        synpic_parameters=biases,
         case_costs=case_costs,
         case_labels=y,
         pics=x,

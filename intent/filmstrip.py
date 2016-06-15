@@ -20,12 +20,23 @@ class Filmstrip:
         if unit_range is None and not numpy.issubdtype(
                         image_data.dtype, numpy.integer):
             unit_range = True
-        if unit_range:
-            image_data = numpy.clip(image_data * 255, 0, 255)
         if len(image_data.shape) == 2:
             image_data = image_data[numpy.newaxis, :, :]
         if negative is None:
             negative = image_data.shape[0] == 1
+        if image_data.shape[0] == 1:
+            if unit_range:
+                high_data = (image_data - 1).clip(0, 1)
+                low_data = (- image_data).clip(0, 1)
+                main_data = image_data.clip(0, 1)
+                image_data = numpy.tile(main_data, (3, 1, 1))
+                image_data[1,:,:] += low_data[0,:,:]
+                image_data[1,:,:] -= high_data[0,:,:]
+                # image_data[1,:,:] -= high_data[0,:,:]
+            else:
+                image_data = numpy.tile(image_data, (3, 1, 1))
+        if unit_range:
+            image_data = numpy.clip(image_data * 255, 0, 255)
         if zeromean:
             image_data = image_data + 128
         if negative:
@@ -33,13 +44,9 @@ class Filmstrip:
         if mask_data is not None:
             image_data = ((image_data.astype(numpy.float) - 128)
                             * mask_data + 128)
-        if image_data.shape[0] == 1:
-            data = image_data.astype(numpy.uint8).tostring()
-            one_image = Image.frombytes('L', self.image_shape, data)
-        else:
-            data = (image_data.transpose((1, 2, 0))
-                            ).astype(numpy.uint8).tostring()
-            one_image = Image.frombytes('RGB', self.image_shape, data)
+        data = (image_data.transpose((1, 2, 0))
+            ).astype(numpy.uint8).tostring()
+        one_image = Image.frombytes('RGB', self.image_shape, data)
         self.im.paste(one_image, tuple((g * (s + self.margin))
                 for g, s in zip(grid_location, self.image_shape)))
 
