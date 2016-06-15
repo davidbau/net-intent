@@ -141,13 +141,13 @@ def main(save_to):
                     mask = make_mask(example.shape[-2:], fieldmap, numpy.clip(
                         snapshots[index, unit, :, :], 0, numpy.inf))
                     imagenum = indices[index, unit, 0]
-                    filmstrip.set_image((index, unit),
+                    filmstrip.set_image((unit, index),
                             examples.get_data(imagenum)[0], mask)
         else:
             for unit in range(indices.shape[1]):
                 for index in range(100):
                     imagenum = indices[index, unit]
-                    filmstrip.set_image((index, unit),
+                    filmstrip.set_image((unit, index),
                             examples.get_data(imagenum)[0])
         filmstrip.save(layer.name + '_maxact.jpg')
 

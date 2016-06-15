@@ -110,7 +110,7 @@ class GradpicGradientDescent(GradientDescent):
                     im = (im - imin) / (imax - imin + 1e-9)
                     for label in range(self.label_count):
                         filmstrip.set_image(
-                                (subunit * self.label_count + label, unit),
+                                (unit, subunit * self.label_count + label),
                                 im[label, :, :])
             filmstrip.save('%s_%s_gradpic.jpg' % (layername, paramname))
 

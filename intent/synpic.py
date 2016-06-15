@@ -95,7 +95,7 @@ class SynpicGradientDescent(GradientDescent):
         logging.info("The synpic jacobian computation graph is built")
         return jacobian_map
 
-    def save_images(self, pattern=None):
+    def save_images(self, pattern=None, aspect_ratio=None):
         if pattern is None:
             pattern = '%s_%s_synpic.jpg'
         for param, synpic in self.synpics.items():
@@ -108,9 +108,27 @@ class SynpicGradientDescent(GradientDescent):
             has_subunits = len(allpics.shape) == 5
             units = allpics.shape[0]
             subunits = allpics.shape[1] if has_subunits else 1
+            unit_width = subunits * self.label_count
+            column_count = 1
+            column_height = units
+            # Figuring how to conform to an aspect ratio:
+            # uw = unit width, uh = unit height
+            # r = target aspect ratio
+            # (width * uw) / (height * uh) <= aspect_ratio
+            # width * height = units
+            # This implies:
+            # width <= sqrt(aspect_ratio * units * uh / uw)
+            if aspect_ratio is not None:
+                uh = allpics.shape[-2] + 1
+                uw = (allpics.shape[-1] + 1) * unit_width
+                column_count = int(numpy.floor(numpy.sqrt(
+                    aspect_ratio * units * uh / uw)))
+                column_height = units // column_count
             filmstrip = Filmstrip(image_shape=allpics.shape[-2:],
-                            grid_shape=(units, subunits * self.label_count))
+                            grid_shape=(column_height, column_count * unit_width))
+
             for unit in range(units):
+                col, row = divmod(unit, column_height)
                 for subunit in range(subunits):
                     if has_subunits:
                         im = allpics[unit, subunit, :, :, :]
@@ -121,8 +139,8 @@ class SynpicGradientDescent(GradientDescent):
                     scale = (imax - imin) / 2
                     im = im / (scale + 1e-9) + 0.5
                     for label in range(self.label_count):
-                        filmstrip.set_image(
-                                (subunit * self.label_count + label, unit),
+                        filmstrip.set_image((row, label +
+                                col * unit_width + subunit * self.label_count),
                                 im[label, :, :])
             filmstrip.save(pattern % (layername, paramname))
 

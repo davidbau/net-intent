@@ -159,10 +159,10 @@ def main(save_to):
                     learning_rate.get_value() * 0.8))
                 print('cost', c)
                 for u in range(dims[0]):
-                    filmstrip.set_image((0, u), result[u,:,:,:])
+                    filmstrip.set_image((u, 0), result[u,:,:,:])
                     filmstrip.save(layer.name + '_stroke.jpg')
             for u in range(dims[0]):
-                filmstrip.set_image((0, u), result[u,:,:,:])
+                filmstrip.set_image((u, 0), result[u,:,:,:])
             filmstrip.save(layer.name + '_stroke.jpg')
 
 if __name__ == "__main__":

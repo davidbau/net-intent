@@ -47,8 +47,8 @@ class Filmstrip:
         data = (image_data.transpose((1, 2, 0))
             ).astype(numpy.uint8).tostring()
         one_image = Image.frombytes('RGB', self.image_shape, data)
-        self.im.paste(one_image, tuple((g * (s + self.margin))
-                for g, s in zip(grid_location, self.image_shape)))
+        self.im.paste(one_image, tuple(reversed(tuple((g * (s + self.margin))
+                for g, s in zip(grid_location, self.image_shape)))))
 
     def save(self, filename):
         dirname = os.path.dirname(filename)

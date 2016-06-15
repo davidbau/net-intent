@@ -48,7 +48,7 @@ class SaveImages(SimpleExtension):
     def do(self, which_callback, *args):
         pattern = self.pattern % ('%s_%s', self.count)
         self.count += 1
-        self.algorithm.save_images(pattern=pattern)
+        self.algorithm.save_images(pattern=pattern, aspect_ratio=16.0/9.0)
 
 def main(save_to, num_epochs, resume=False, **kwargs):
     if resume:
