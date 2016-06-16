@@ -109,7 +109,7 @@ class SynpicGradientDescent(GradientDescent):
             has_subunits = len(allpics.shape) == 5
             units = allpics.shape[0]
             subunits = allpics.shape[1] if has_subunits else 1
-            unit_width = subunits * self.label_count
+            unit_width = subunits * self.label_count + 1
             column_height, column_count = plan_grid(units, aspect_ratio,
                     allpics.shape, (1, unit_width))
             filmstrip = Filmstrip(image_shape=allpics.shape[-2:],
@@ -117,6 +117,7 @@ class SynpicGradientDescent(GradientDescent):
 
             for unit in range(units):
                 col, row = divmod(unit, column_height)
+                filmstrip.set_text((row, col * unit_width), "%d" % unit)
                 for subunit in range(subunits):
                     if has_subunits:
                         im = allpics[unit, subunit, :, :, :]
@@ -127,7 +128,7 @@ class SynpicGradientDescent(GradientDescent):
                     scale = (imax - imin) / 2
                     im = im / (scale + 1e-9) + 0.5
                     for label in range(self.label_count):
-                        filmstrip.set_image((row, label +
+                        filmstrip.set_image((row, label + 1 +
                                 col * unit_width + subunit * self.label_count),
                                 im[label, :, :])
             filmstrip.save(pattern % (layername, paramname))

@@ -1,7 +1,8 @@
-from PIL import Image
+from PIL import Image, ImageFont, ImageDraw
 import os
 import os.path
 import numpy
+import pkg_resources
 
 # Figuring how to conform to an aspect ratio:
 # uw = unit width, uh = unit height
@@ -41,6 +42,9 @@ class Filmstrip:
             ((self.image_shape[1] + margin) * self.grid_shape[1] - margin,
              (self.image_shape[0] + margin) * self.grid_shape[0] - margin),
             self.background)
+        self.fontfile = pkg_resources.resource_filename(__name__,
+                "font/OpenSans-Regular.ttf")
+        self.draw = ImageDraw.Draw(self.im)
 
     def set_image(self, grid_location, image_data, mask_data=None,
                     negative=None, zeromean=False, unit_range=None,
@@ -76,6 +80,21 @@ class Filmstrip:
         one_image = Image.frombytes('RGB', self.image_shape, data)
         self.im.paste(one_image, tuple(reversed(tuple((g * (s + self.margin))
                 for g, s in zip(grid_location, self.image_shape)))))
+
+    def set_text(self, grid_location, text, size=None, fill='black'):
+        if size is None:
+            size = int(self.image_shape[0] / 2)
+        font = ImageFont.truetype(self.fontfile, size)
+        lines = [line.strip() for line in text.split('\n')]
+        sizes = [self.draw.textsize(line, font=font) for line in lines]
+        xc, yc = tuple(reversed(tuple((g * (s + self.margin))
+                for g, s in zip(grid_location, self.image_shape))))
+        y = (self.image_shape[0] - sum(h for w, h in sizes)) / 2
+        bw = self.image_shape[1]
+        for line, (w, h) in zip(lines, sizes):
+            location = (xc + (bw - w) / 2, yc + y)
+            self.draw.text(location, line, font=font, fill=fill)
+            y += h
 
     def save(self, filename):
         dirname = os.path.dirname(filename)
