@@ -16,7 +16,8 @@ class Filmstrip:
             self.background)
 
     def set_image(self, grid_location, image_data, mask_data=None,
-                    negative=None, zeromean=False, unit_range=None):
+                    negative=None, zeromean=False, unit_range=None,
+                    overflow_color=1):
         if unit_range is None and not numpy.issubdtype(
                         image_data.dtype, numpy.integer):
             unit_range = True
@@ -30,9 +31,8 @@ class Filmstrip:
                 low_data = (- image_data).clip(0, 1)
                 main_data = image_data.clip(0, 1)
                 image_data = numpy.tile(main_data, (3, 1, 1))
-                image_data[1,:,:] += low_data[0,:,:]
-                image_data[1,:,:] -= high_data[0,:,:]
-                # image_data[1,:,:] -= high_data[0,:,:]
+                image_data[overflow_color,:,:] += low_data[0,:,:]
+                image_data[overflow_color,:,:] -= high_data[0,:,:]
             else:
                 image_data = numpy.tile(image_data, (3, 1, 1))
         if unit_range:
