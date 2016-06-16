@@ -13,6 +13,7 @@ from blocks.roles import PersistentRole
 from blocks.roles import add_role
 from blocks.utils import shared_floatx_zeros
 from filmstrip import Filmstrip
+from filmstrip import plan_grid
 from picklable_itertools.extras import equizip
 import numpy
 
@@ -109,23 +110,10 @@ class SynpicGradientDescent(GradientDescent):
             units = allpics.shape[0]
             subunits = allpics.shape[1] if has_subunits else 1
             unit_width = subunits * self.label_count
-            column_count = 1
-            column_height = units
-            # Figuring how to conform to an aspect ratio:
-            # uw = unit width, uh = unit height
-            # r = target aspect ratio
-            # (width * uw) / (height * uh) <= aspect_ratio
-            # width * height = units
-            # This implies:
-            # width <= sqrt(aspect_ratio * units * uh / uw)
-            if aspect_ratio is not None:
-                uh = allpics.shape[-2] + 1
-                uw = (allpics.shape[-1] + 1) * unit_width
-                column_count = int(numpy.floor(numpy.sqrt(
-                    aspect_ratio * units * uh / uw)))
-                column_height = units // column_count
+            column_height, column_count = plan_grid(units, aspect_ratio,
+                    allpics.shape, (1, unit_width))
             filmstrip = Filmstrip(image_shape=allpics.shape[-2:],
-                            grid_shape=(column_height, column_count * unit_width))
+                grid_shape=(column_height, column_count * unit_width))
 
             for unit in range(units):
                 col, row = divmod(unit, column_height)

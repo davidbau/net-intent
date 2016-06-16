@@ -3,6 +3,32 @@ import os
 import os.path
 import numpy
 
+# Figuring how to conform to an aspect ratio:
+# uw = unit width, uh = unit height
+# r = target aspect ratio
+# (width * uw) / (height * uh) <= aspect_ratio
+# width * height = units
+# This implies:
+# width <= sqrt(aspect_ratio * units * uh / uw)
+def plan_grid(unit_count, aspect_ratio, image_shape=None,
+                unit_shape=None, nearest=False):
+    if aspect_ratio is None:
+        return (unit_count, 1)
+    if image_shape is None:
+        image_shape = (1, 1)
+    if unit_shape is None:
+        unit_shape = (1, 1)
+    uh = (image_shape[-2] + 1) * unit_shape[-2]
+    uw = (image_shape[-1] + 1) * unit_shape[-1]
+    ideal_column_count = numpy.sqrt(aspect_ratio * unit_count * uh / uw)
+    if nearest:
+        column_count = int(numpy.round(ideal_column_count))
+    else:
+        column_count = int(numpy.floor(ideal_column_count))
+    column_height = int(numpy.ceil(unit_count / column_count))
+    column_count = int(numpy.ceil(unit_count / column_height))
+    return (column_height, column_count)
+
 class Filmstrip:
     def __init__(self, image_shape=None, grid_shape=None,
                     margin=1, background='white'):
