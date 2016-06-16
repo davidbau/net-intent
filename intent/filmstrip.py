@@ -25,6 +25,7 @@ def plan_grid(unit_count, aspect_ratio, image_shape=None,
         column_count = int(numpy.round(ideal_column_count))
     else:
         column_count = int(numpy.floor(ideal_column_count))
+    column_count = max(1, column_count)
     column_height = int(numpy.ceil(unit_count / column_count))
     column_count = int(numpy.ceil(unit_count / column_height))
     return (column_height, column_count)
