@@ -41,7 +41,7 @@ class SaveImages(SimpleExtension):
         self.algorithm = algorithm
         self.count = 0
         if pattern is None:
-            pattern = 'synpics/%s_%04d.jpg'
+            pattern = 'pics/syn/%s_%04d.jpg'
         self.pattern = pattern
         super(SaveImages, self).__init__(**kwargs)
 
