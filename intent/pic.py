@@ -27,6 +27,7 @@ from blocks.initialization import Constant, Uniform
 from blocks.main_loop import MainLoop
 from blocks.model import Model
 from blocks.monitoring import aggregation
+from blocks.monitoring.evaluators import AggregationBuffer
 from blocks.roles import WEIGHT, BIAS
 from blocks.serialization import load
 from fuel.datasets import MNIST
@@ -35,21 +36,54 @@ from fuel.streams import DataStream
 from intent.lenet import LeNet
 from intent.synpic import SynpicGradientDescent
 from intent.synpic import CasewiseCrossEntropy
+import numpy
 
 class SaveImages(SimpleExtension):
-    def __init__(self, algorithm=None, pattern=None, **kwargs):
+    def __init__(self, algorithm=None, pattern=None,
+            title=None, data=None, graph=None, graph_len=None,
+            **kwargs):
+        kwargs.setdefault("before_training", True)
         self.algorithm = algorithm
         self.count = 0
         if pattern is None:
             pattern = 'pics/syn/%s_%04d.jpg'
         self.pattern = pattern
+        self.title = title
+        self.data = data
+        self.graph = graph
+        self.graph_len = graph_len
+        self.graph_data = None
+        # Now create an AggregationBuffer for theano variables to monitor
+        variables = set()
+        self.variables = AggregationBuffer(data, use_take_last=True)
         super(SaveImages, self).__init__(**kwargs)
 
-    def do(self, which_callback, *args):
-        filename = self.pattern % ('composite', self.count)
-        self.count += 1
-        self.algorithm.save_composite_image(
-                filename=filename, aspect_ratio=16.0/9.0)
+    def do(self, callback_name, *args):
+        self.parse_args(callback_name, args)
+        if (callback_name == 'before_training'):
+            self.main_loop.algorithm.add_updates(
+                    self.variables.accumulation_updates)
+            self.variables.initialize_aggregators()
+        else:
+            title = self.title
+            if self.data:
+                values = dict((k, float(v))
+                    for k, v in self.variables.get_aggregated_values().items())
+                values['i'] = self.count
+                title = title.format(**values)
+            graph = None
+            if self.graph:
+                if self.graph_data is None:
+                    self.graph_data = numpy.array(())
+                self.graph_data = numpy.append(
+                        self.graph_data, values[self.graph])
+                graph = self.graph_data / self.graph_data.max()
+            filename = self.pattern % ('composite', self.count)
+            self.count += 1
+            self.algorithm.save_composite_image(
+                    title=title, graph=graph, graph_len=self.graph_len,
+                    filename=filename, aspect_ratio=16.0/9.0)
+            self.variables.initialize_aggregators()
 
 def main(save_to, num_epochs, resume=False, **kwargs):
     if resume:
@@ -162,7 +196,14 @@ def create_main_loop(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
     extensions = [Timing(),
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
-                  SaveImages(algorithm=algorithm, after_batch=True),
+                  SaveImages(algorithm=algorithm,
+                      title="LeNet-5: batch {i}, " +
+                          "cost {cost_with_regularization:.2f}, " + 
+                          "trainerr {error_rate:.3f}",
+                      data=[cost, error_rate],
+                      graph='error_rate',
+                      graph_len=500,
+                      after_batch=True),
                   DataStreamMonitoring(
                       [cost, error_rate],
                       mnist_test_stream,

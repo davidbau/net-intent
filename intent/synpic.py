@@ -48,7 +48,7 @@ def _create_synpic_updates(synpic, jacobian, attributed_pic):
     # Updates synpic which is (units1, units2.., labels, picy, picx)
     # By dotting jacobian: (cases, units1, units2..) and
     # attributed_pic (cases, labels, picy, picx)
-    return (synpic, synpic * 0.99 -
+    return (synpic, synpic * 0.97 -
             tensor.tensordot(jacobian, attributed_pic, axes=((0,), (0,))))
 
 class SynpicGradientDescent(GradientDescent):
@@ -133,11 +133,17 @@ class SynpicGradientDescent(GradientDescent):
                                 im[label, :, :])
             filmstrip.save(pattern % (layername, paramname))
 
-    def save_composite_image(self, filename=None, aspect_ratio=None):
+    def save_composite_image(self,
+                title=None, graph=None, graph_len=None,
+                filename=None, aspect_ratio=None):
         if filename is None:
             pattern = 'synpic.jpg'
         unit_count = 0
         layer_count = 0
+        if graph is not None:
+            unit_count += 4 # TODO: make configurable
+        if title is not None:
+            unit_count += 1
         for param, synpic in self.synpics.items():
             allpics = synpic.get_value()
             if len(allpics.shape) != 4:
@@ -151,17 +157,28 @@ class SynpicGradientDescent(GradientDescent):
         filmstrip = Filmstrip(image_shape=allpics.shape[-2:],
             grid_shape=(column_height, column_count * unit_width))
         pos = 0
+        if graph is not None:
+            col, row = divmod(pos, column_height)
+            filmstrip.plot_graph((row, col * unit_width + 1),
+                (4, unit_width - 1),
+                graph, graph_len)
+            pos += 4
+        if title is not None:
+            col, row = divmod(pos, column_height)
+            filmstrip.set_text((row, col * unit_width + unit_width // 2),
+                    title)
+            pos += 1
         for param, synpic in self.synpics.items():
             layername = param.tag.annotations[0].name
             allpics = synpic.get_value()
             units = allpics.shape[0]
             col, row = divmod(pos, column_height)
-            filmstrip.set_text((row, col * unit_width +
-                (self.label_count + 1) // 2), layername)
+            filmstrip.set_text((row, col * unit_width + unit_width // 2),
+                    layername)
             pos += 1
             for unit in range(units):
                 col, row = divmod(pos, column_height)
-                filmstrip.set_text((row, col * unit_width), "%d" % unit)
+                filmstrip.set_text((row, col * unit_width), "%d:" % unit)
                 im = allpics[unit, :, :, :]
                 imin = im.min()
                 imax = im.max()

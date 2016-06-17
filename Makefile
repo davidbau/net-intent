@@ -28,13 +28,11 @@ $(MNIST): $(VENV)
 		&& $(FUEL_DOWNLOAD) mnist -d $(FUEL_DATA_PATH) --clear
 
 movie: $(VENV) $(MNIST) Makefile
-	$(PYTHON) intent/pic.py \
-      --num-epochs=25
+	$(PYTHON) intent/pic.py --num-epochs=25
 	sh makemovies.sh
 
 solve: $(VENV) $(MNIST) Makefile
-	$(PYTHON) intent/run.py \
-      --num-epochs=25
+	$(PYTHON) intent/run.py --num-epochs=25
 
 clean:
 	rm -f env

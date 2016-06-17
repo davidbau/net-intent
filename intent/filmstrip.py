@@ -12,15 +12,15 @@ import pkg_resources
 # This implies:
 # width <= sqrt(aspect_ratio * units * uh / uw)
 def plan_grid(unit_count, aspect_ratio, image_shape=None,
-                unit_shape=None, nearest=False):
+                unit_shape=None, nearest=False, margin=1):
     if aspect_ratio is None:
         return (unit_count, 1)
     if image_shape is None:
         image_shape = (1, 1)
     if unit_shape is None:
         unit_shape = (1, 1)
-    uh = (image_shape[-2] + 1) * unit_shape[-2]
-    uw = (image_shape[-1] + 1) * unit_shape[-1]
+    uh = (image_shape[-2] + margin) * unit_shape[-2]
+    uw = (image_shape[-1] + margin) * unit_shape[-1]
     ideal_column_count = numpy.sqrt(aspect_ratio * unit_count * uh / uw)
     if nearest:
         column_count = int(numpy.round(ideal_column_count))
@@ -45,6 +45,10 @@ class Filmstrip:
         self.fontfile = pkg_resources.resource_filename(__name__,
                 "font/OpenSans-Regular.ttf")
         self.draw = ImageDraw.Draw(self.im)
+
+    def corner_from_grid_location(self, grid_location):
+        return tuple(reversed(tuple((g * (s + self.margin))
+                for g, s in zip(grid_location, self.image_shape))))
 
     def set_image(self, grid_location, image_data, mask_data=None,
                     negative=None, zeromean=False, unit_range=None,
@@ -78,8 +82,7 @@ class Filmstrip:
         data = (image_data.transpose((1, 2, 0))
             ).astype(numpy.uint8).tostring()
         one_image = Image.frombytes('RGB', self.image_shape, data)
-        self.im.paste(one_image, tuple(reversed(tuple((g * (s + self.margin))
-                for g, s in zip(grid_location, self.image_shape)))))
+        self.im.paste(one_image, self.corner_from_grid_location(grid_location))
 
     def set_text(self, grid_location, text, size=None, fill='black'):
         if size is None:
@@ -87,14 +90,29 @@ class Filmstrip:
         font = ImageFont.truetype(self.fontfile, size)
         lines = [line.strip() for line in text.split('\n')]
         sizes = [self.draw.textsize(line, font=font) for line in lines]
-        xc, yc = tuple(reversed(tuple((g * (s + self.margin))
-                for g, s in zip(grid_location, self.image_shape))))
+        xc, yc = self.corner_from_grid_location(grid_location)
         y = (self.image_shape[0] - sum(h for w, h in sizes)) / 2
         bw = self.image_shape[1]
         for line, (w, h) in zip(lines, sizes):
             location = (xc + (bw - w) / 2, yc + y)
             self.draw.text(location, line, font=font, fill=fill)
             y += h
+
+    def plot_graph(self, grid_location, grid_extent, data,
+            data_len=None, fill='black'):
+        xc, yc = self.corner_from_grid_location(grid_location)
+        ys, xs = (g * (s + self.margin)
+                for g, s in zip(grid_extent, self.image_shape))
+        if data_len is not None:
+            dlen = float(data_len)
+            data = data[-data_len:]
+        else:
+            dlen = float(len(d))
+        for i, d in enumerate(data):
+            if d is not None and 0 < d < 1:
+                x = i / dlen * xs + xc
+                y = (1 - d) * ys + yc
+                self.draw.ellipse((x, y, x + 1, y + 1), fill)
 
     def save(self, filename):
         dirname = os.path.dirname(filename)
