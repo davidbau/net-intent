@@ -11,7 +11,7 @@ from argparse import ArgumentParser
 
 from theano import tensor
 
-from blocks.algorithms import Scale
+from blocks.algorithms import Scale, AdaDelta
 from blocks.bricks import Rectifier
 from blocks.bricks import Activation
 from blocks.bricks import Softmax
@@ -126,7 +126,7 @@ def create_main_loop(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
 
     # Apply regularization to the cost
     weights = VariableFilter(roles=[WEIGHT])(cg.variables)
-    cost = cost + sum([0.005 * (W ** 2).sum() for W in weights])
+    cost = cost + sum([0.0003 * (W ** 2).sum() for W in weights])
     cost.name = 'cost_with_regularization'
 
     mnist_train = MNIST(("train",))
@@ -154,7 +154,7 @@ def create_main_loop(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
         batch_size=batch_size,
         pic_size=image_size,
         label_count=output_size,
-        step_rule=Scale(learning_rate=0.1))
+        step_rule=AdaDelta())
 
     # `Timing` extension reports time for reading data, aggregating a batch
     # and monitoring;

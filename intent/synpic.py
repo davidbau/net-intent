@@ -48,7 +48,7 @@ def _create_synpic_updates(synpic, jacobian, attributed_pic):
     # Updates synpic which is (units1, units2.., labels, picy, picx)
     # By dotting jacobian: (cases, units1, units2..) and
     # attributed_pic (cases, labels, picy, picx)
-    return (synpic, synpic -
+    return (synpic, synpic * 0.99 -
             tensor.tensordot(jacobian, attributed_pic, axes=((0,), (0,))))
 
 class SynpicGradientDescent(GradientDescent):
