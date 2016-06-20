@@ -135,7 +135,7 @@ class SynpicGradientDescent(GradientDescent):
 
     def save_composite_image(self,
                 title=None, graph=None, graph_len=None,
-                filename=None, aspect_ratio=None):
+                filename=None, aspect_ratio=None, unit_order=None):
         if filename is None:
             pattern = 'synpic.jpg'
         unit_count = 0
@@ -176,7 +176,11 @@ class SynpicGradientDescent(GradientDescent):
             filmstrip.set_text((row, col * unit_width + unit_width // 2),
                     layername)
             pos += 1
-            for unit in range(units):
+            if unit_order:
+                ordering = unit_order[layername]
+            else:
+                ordering = range(units)
+            for unit in ordering:
                 col, row = divmod(pos, column_height)
                 filmstrip.set_text((row, col * unit_width), "%d:" % unit)
                 im = allpics[unit, :, :, :]

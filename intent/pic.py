@@ -37,17 +37,19 @@ from intent.lenet import LeNet
 from intent.synpic import SynpicGradientDescent
 from intent.synpic import CasewiseCrossEntropy
 import numpy
+import pickle
 
 class SaveImages(SimpleExtension):
     def __init__(self, algorithm=None, pattern=None,
             title=None, data=None, graph=None, graph_len=None,
-            **kwargs):
+            unit_order=None, **kwargs):
         kwargs.setdefault("before_training", True)
         self.algorithm = algorithm
         self.count = 0
         if pattern is None:
             pattern = 'pics/syn/%s_%04d.jpg'
         self.pattern = pattern
+        self.unit_order = unit_order
         self.title = title
         self.data = data
         self.graph = graph
@@ -82,8 +84,22 @@ class SaveImages(SimpleExtension):
             self.count += 1
             self.algorithm.save_composite_image(
                     title=title, graph=graph, graph_len=self.graph_len,
+                    unit_order=self.unit_order,
                     filename=filename, aspect_ratio=16.0/9.0)
             self.variables.initialize_aggregators()
+
+def argsort(seq):
+    # http://stackoverflow.com/questions/3382352#3382369
+    return sorted(range(len(seq)), key=seq.__getitem__)
+
+def compute_unit_order(data):
+    result = {}
+    for (layername, paramname), hist in data.items():
+        if paramname != 'b':
+            continue
+        result[layername] = argsort(
+                list(tuple(r) for r in hist.transpose().argsort(axis=1)))
+    return result
 
 def main(save_to, num_epochs, resume=False, **kwargs):
     if resume:
@@ -97,9 +113,8 @@ def main(save_to, num_epochs, resume=False, **kwargs):
 
     main_loop.algorithm.save_images()
 
-
 def create_main_loop(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
-         conv_sizes=None, pool_sizes=None, batch_size=500,
+         conv_sizes=None, pool_sizes=None, unit_order=None, batch_size=500,
          num_batches=None):
     if feature_maps is None:
         feature_maps = [6, 16]
@@ -190,6 +205,12 @@ def create_main_loop(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
         label_count=output_size,
         step_rule=AdaDelta())
 
+    # Impose an orderint for the SaveImages extension
+    if unit_order is not None:
+        with open(unit_order, 'rb') as handle:
+            histograms = pickle.load(handle)
+        unit_order = compute_unit_order(histograms)
+
     # `Timing` extension reports time for reading data, aggregating a batch
     # and monitoring;
     # `ProgressBar` displays a nice progress bar during training.
@@ -203,6 +224,7 @@ def create_main_loop(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
                       data=[cost, error_rate],
                       graph='error_rate',
                       graph_len=500,
+                      unit_order=unit_order,
                       after_batch=True),
                   DataStreamMonitoring(
                       [cost, error_rate],
@@ -247,6 +269,8 @@ if __name__ == "__main__":
                              "--conv-sizes.")
     parser.add_argument("--batch-size", type=int, default=500,
                         help="Batch size.")
+    parser.add_argument("--unit-order", nargs="?", default=None,
+                        help="Render unit ordering based on these histograms.")
     parser.add_argument('--resume', dest='resume', action='store_true')
     parser.add_argument('--no-resume', dest='resume', action='store_false')
     parser.set_defaults(resume=False)

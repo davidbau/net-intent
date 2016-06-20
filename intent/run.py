@@ -34,6 +34,9 @@ from intent.lenet import LeNet
 from intent.attrib import AttributedGradientDescent
 from intent.attrib import ComponentwiseCrossEntropy
 from intent.attrib import print_attributions
+from intent.attrib import save_attributions
+from intent.ablation import ConfusionMatrix
+from intent.ablation import Sum
 
 # For testing
 
@@ -96,6 +99,9 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
             .copy(name='components'))
     error_rate = (MisclassificationRate().apply(y.flatten(), probs)
                   .copy(name='error_rate'))
+    confusion = (ConfusionMatrix().apply(y.flatten(), probs)
+                  .copy(name='confusion'))
+    confusion.tag.aggregation_scheme = Sum(confusion)
 
     cg = ComputationGraph([cost, error_rate, components])
 
@@ -129,7 +135,7 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
                   DataStreamMonitoring(
-                      [cost, error_rate],
+                      [cost, error_rate, confusion],
                       mnist_test_stream,
                       prefix="test"),
                   TrainingDataMonitoring(
@@ -154,7 +160,7 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
 
     main_loop.run()
 
-    # print_attributions(algorithm)
+    save_attributions(algorithm)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

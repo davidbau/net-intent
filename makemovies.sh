@@ -8,8 +8,10 @@ mkdir -p movies/$KIND
 
 avconv -y -framerate 30 -f image2 -qscale 1 \
         -i pics/$KIND/composite_%04d.jpg \
+        -i media/David_Szesztay_Traveller.mp3 \
         -c:v h264 -preset veryslow -tune grain -crf 23 \
         -vf "scale=1739:1080,pad=1920:1080:90:0" \
+        -b:a 128k -shortest \
         movies/$KIND/composite.mov
 
 # avconv -y -framerate 30 -f image2 -qscale 1 \

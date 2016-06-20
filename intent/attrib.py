@@ -14,6 +14,7 @@ from blocks.roles import add_role
 from blocks.utils import shared_floatx_zeros
 from picklable_itertools.extras import equizip
 import numpy
+import pickle
 
 class ComponentwiseCrossEntropy(Brick):
     """By-component cross entropy.
@@ -90,6 +91,17 @@ class AttributedGradientDescent(GradientDescent):
         jacobian_map = OrderedDict(equizip(self.parameters, jacobians))
         logging.info("The component jacobian computation graph is built")
         return jacobian_map
+
+def save_attributions(algorithm, filename=None):
+    if filename is None:
+        filename = 'histograms.pkl'
+    data = {}
+    for param, hist in algorithm.attributions.items():
+        paramname = hist.tag.for_parameter.name
+        layername = hist.tag.for_parameter.tag.annotations[0].name
+        data[(layername, paramname)] = hist.get_value()
+    with open(filename, 'wb') as handle:
+        pickle.dump(data, handle)
 
 def print_attributions(algorithm):
     param, hist = zip(*algorithm.attributions.items())
