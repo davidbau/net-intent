@@ -1,8 +1,9 @@
 """Convolutional network example.
 
-Run the training for 20 epochs with
+Synthesize gradient descent images by
+
 ```
-python run.py --num-epochs 20
+python synth.py
 ```
 
 """
