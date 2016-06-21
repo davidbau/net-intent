@@ -78,7 +78,7 @@ class ConfusionImage(Brick):
         result = expanded.sum(axis=0)
         return result
 
-def ablate_inputs(ablation, activations, weights, axis=1):
+def ablate_inputs(ablation, activations, weights, axis=None, compensate=True):
     """
     Zeros incoming weights for the given set of input neurons, and
     then approximates the response of those neurons by adjusting
@@ -95,27 +95,33 @@ def ablate_inputs(ablation, activations, weights, axis=1):
     axis - the axis over which input neurons are listed in the
         weight matrix.
     """
+    if len(weights.shape) <= 2:
+        axis = 0  # Assume a linear weight, where output is on axis 0
+    else:
+        axis = 1  # Assume a convolutional weight, where output is on axis 1
     # B contains the activations of the removed neurons
     B = activations[:, ablation]
     # A contains the activations of the non-removed neurons
-    remaining = numpy.ones(B.size[1], numpy.bool)
+    remaining = numpy.ones(activations.shape[1], numpy.bool)
     remaining[ablation] = 0
     A = activations[:, remaining]
     # Solve x = np.linagl.lstsq(A, B) for the original layer
     # X dimensions: (remaining, removed)
-    (X, res, rank, s) = np.linalg.lstsq(A, B)
+    (X, res, rank, s) = numpy.linalg.lstsq(A, B)
     # Extract the set of weights that have been removed
+    # import pdb; pdb.set_trace()
     removed_weights = numpy.take(weights, ablation, axis=axis)
     # Compute weight adjustment that approximates the removed neurons.
     adj_weights = (numpy.tensordot(X, removed_weights, axes=([1], [axis]))
             .swapaxes(0, axis))
     # Construct the result
     result = numpy.copy(weights)
-    dims = range(len(result.size))
+    dims = range(len(result.shape))
     # Zero direct inputs from the ablated neurons
-    result[(ablation
+    result[tuple(ablation
         if a == axis else slice(None) for a in dims)] = 0
     # Adjust inputs from all the other neurons
-    result[(remaining
-        if a == axis else slice(None) for a in dims)] += adj_weights
+    if compensate:
+        result[tuple(remaining
+            if a == axis else slice(None) for a in dims)] += adj_weights
     return result
