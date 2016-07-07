@@ -138,64 +138,10 @@ class SynpicExtension(SimpleExtension):
                                 im[label, :, :])
             filmstrip.save(pattern % (layername, paramname))
 
-    def save_composite_image(self,
-                title=None, graph=None, graph_len=None,
-                filename=None, aspect_ratio=None, unit_order=None):
-        if filename is None:
-            pattern = 'synpic.jpg'
-        unit_count = 0
-        layer_count = 0
-        if graph is not None:
-            unit_count += 4 # TODO: make configurable
-        if title is not None:
-            unit_count += 1
-        for param, synpic in self.synpics.items():
-            allpics = synpic.get_value()
-            if len(allpics.shape) != 4:
-                raise NotImplementedError('%s has %s dimensions' % (
-                    param.name, allpics.shape))
-            layer_count += 1
-            unit_count += allpics.shape[0]
-        unit_width = self.label_count + 1
-        column_height, column_count = plan_grid(unit_count + layer_count,
-                aspect_ratio, allpics.shape, (1, unit_width))
-        filmstrip = Filmstrip(image_shape=allpics.shape[-2:],
-            grid_shape=(column_height, column_count * unit_width))
-        pos = 0
-        if graph is not None:
-            col, row = divmod(pos, column_height)
-            filmstrip.plot_graph((row, col * unit_width + 1),
-                (4, unit_width - 1),
-                graph, graph_len)
-            pos += 4
-        if title is not None:
-            col, row = divmod(pos, column_height)
-            filmstrip.set_text((row, col * unit_width + unit_width // 2),
-                    title)
-            pos += 1
+    def get_picdata(self):
+        result = OrderedDict()
         for param, synpic in self.synpics.items():
             layername = param.tag.annotations[0].name
-            allpics = synpic.get_value()
-            units = allpics.shape[0]
-            col, row = divmod(pos, column_height)
-            filmstrip.set_text((row, col * unit_width + unit_width // 2),
-                    layername)
-            pos += 1
-            if unit_order:
-                ordering = unit_order[layername]
-            else:
-                ordering = range(units)
-            for unit in ordering:
-                col, row = divmod(pos, column_height)
-                filmstrip.set_text((row, col * unit_width), "%d:" % unit)
-                im = allpics[unit, :, :, :]
-                imin = im.min()
-                imax = im.max()
-                scale = (imax - imin) / 2
-                im = im / (scale + 1e-9) + 0.5
-                for label in range(self.label_count):
-                    filmstrip.set_image((row, label + 1 +
-                        col * unit_width), im[label, :, :])
-                pos += 1
-        filmstrip.save(filename)
+            result[layername] = synpic.get_value()
+        return result
 

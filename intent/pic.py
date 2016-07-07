@@ -33,15 +33,18 @@ from fuel.streams import DataStream
 from intent.lenet import LeNet, create_lenet_5
 from intent.synpic import SynpicExtension
 from intent.synpic import CasewiseCrossEntropy
+from collections import OrderedDict
+from filmstrip import Filmstrip
+from filmstrip import plan_grid
 import numpy
 import pickle
 
 class SaveImages(SimpleExtension):
-    def __init__(self, synpic=None, pattern=None,
+    def __init__(self, picsources=None, pattern=None,
             title=None, data=None, graph=None, graph_len=None,
             unit_order=None, **kwargs):
         kwargs.setdefault("before_training", True)
-        self.synpic = synpic
+        self.picsources = picsources
         self.count = 0
         if pattern is None:
             pattern = 'pics/syn/%s_%04d.jpg'
@@ -78,11 +81,76 @@ class SaveImages(SimpleExtension):
                 graph = self.graph_data / self.graph_data.max()
             filename = self.pattern % ('composite', self.count)
             self.count += 1
-            self.synpic.save_composite_image(
+            picdata = [ps.get_picdata() for ps in self.picsources]
+            self.save_composite_image(
                     title=title, graph=graph, graph_len=self.graph_len,
-                    unit_order=self.unit_order,
+                    picdata=picdata, unit_order=self.unit_order,
                     filename=filename, aspect_ratio=16.0/9.0)
             self.variables.initialize_aggregators()
+
+    def save_composite_image(self,
+                title=None, graph=None, graph_len=None, picdata=None,
+                filename=None, aspect_ratio=None, unit_order=None):
+        if filename is None:
+            pattern = 'synpic.jpg'
+        unit_count = 0
+        layer_count = 0
+        if graph is not None:
+            unit_count += 4 # TODO: make configurable
+        if title is not None:
+            unit_count += 1
+        merged = OrderedDict([
+            (k, [d[k] for d in picdata]) for k in picdata[0].keys()])
+        unit_width = 0
+        for name, d in merged.items():
+            for dat in d:
+                if len(dat.shape) != 4:
+                    raise NotImplementedError('%s has %s dimensions' % (
+                        param.name, dat.shape))
+                unit_count += dat.shape[0]
+                unit_width = max(unit_width, dat.shape[1])
+            layer_count += 1
+        unit_width += 1
+        column_height, column_count = plan_grid(unit_count + layer_count,
+                aspect_ratio, dat.shape[-2:], (1, unit_width))
+        filmstrip = Filmstrip(image_shape=dat.shape[-2:],
+            grid_shape=(column_height, column_count * unit_width))
+        pos = 0
+        if graph is not None:
+            col, row = divmod(pos, column_height)
+            filmstrip.plot_graph((row, col * unit_width + 1),
+                (4, unit_width - 1),
+                graph, graph_len)
+            pos += 4
+        if title is not None:
+            col, row = divmod(pos, column_height)
+            filmstrip.set_text((row, col * unit_width + unit_width // 2),
+                    title)
+            pos += 1
+        for layername, d in merged.items():
+            units = d[0].shape[0]
+            col, row = divmod(pos, column_height)
+            filmstrip.set_text((row, col * unit_width + unit_width // 2),
+                    layername)
+            pos += 1
+            if unit_order:
+                ordering = unit_order[layername]
+            else:
+                ordering = range(units)
+            for unit in ordering:
+                for dat in d:
+                    col, row = divmod(pos, column_height)
+                    filmstrip.set_text((row, col * unit_width), "%d:" % unit)
+                    im = dat[unit, :, :, :]
+                    imin = im.min()
+                    imax = im.max()
+                    scale = (imax - imin) / 2
+                    im = im / (scale + 1e-9) + 0.5
+                    for label in range(im.shape[0]):
+                        filmstrip.set_image((row, label + 1 +
+                            col * unit_width), im[label, :, :])
+                    pos += 1
+        filmstrip.save(filename)
 
 def argsort(seq):
     # http://stackoverflow.com/questions/3382352#3382369
@@ -106,8 +174,6 @@ def main(save_to, num_epochs, resume=False, **kwargs):
 
     if main_loop.status['epochs_done'] < num_epochs:
         main_loop.run()
-
-    # main_loop.algorithm.save_images()
 
 def create_main_loop(save_to, num_epochs, unit_order=None,
         batch_size=500, num_batches=None):
@@ -175,7 +241,7 @@ def create_main_loop(save_to, num_epochs, unit_order=None,
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
                   synpic_extension,
-                  SaveImages(synpic=synpic_extension,
+                  SaveImages(picsources=[synpic_extension],
                       title="LeNet-5: batch {i}, " +
                           "cost {cost_with_regularization:.2f}, " + 
                           "trainerr {error_rate:.3f}",
