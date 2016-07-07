@@ -13,8 +13,11 @@ import numpy as np
 from blocks.bricks import FeedforwardSequence
 from blocks.bricks import Initializable
 from blocks.bricks import MLP
+from blocks.bricks import Rectifier
+from blocks.bricks import Softmax
 from blocks.bricks.conv import Convolutional, ConvolutionalSequence
 from blocks.bricks.conv import Flattener, MaxPooling
+from blocks.initialization import Constant, Uniform
 from toolz.itertoolz import interleave
 
 
@@ -116,4 +119,37 @@ class LeNet(FeedforwardSequence, Initializable):
         self.top_mlp.dims = [np.prod(conv_out_dim)] + self.top_mlp_dims
 
 
+def create_lenet_5():
+    feature_maps = [6, 16]
+    mlp_hiddens = [120, 84]
+    conv_sizes = [5, 5]
+    pool_sizes = [2, 2]
+    image_size = (28, 28)
+    output_size = 10
 
+    # The above are from LeCun's paper. The blocks example had:
+    #    feature_maps = [20, 50]
+    #    mlp_hiddens = [500]
+
+    # Use ReLUs everywhere and softmax for the final prediction
+    conv_activations = [Rectifier() for _ in feature_maps]
+    mlp_activations = [Rectifier() for _ in mlp_hiddens] + [Softmax()]
+    convnet = LeNet(conv_activations, 1, image_size,
+                    filter_sizes=zip(conv_sizes, conv_sizes),
+                    feature_maps=feature_maps,
+                    pooling_sizes=zip(pool_sizes, pool_sizes),
+                    top_mlp_activations=mlp_activations,
+                    top_mlp_dims=mlp_hiddens + [output_size],
+                    border_mode='valid',
+                    weights_init=Uniform(width=.2),
+                    biases_init=Constant(0))
+    # We push initialization config to set different initialization schemes
+    # for convolutional layers.
+    convnet.push_initialization_config()
+    convnet.layers[0].weights_init = Uniform(width=.2)
+    convnet.layers[1].weights_init = Uniform(width=.09)
+    convnet.top_mlp.linear_transformations[0].weights_init = Uniform(width=.08)
+    convnet.top_mlp.linear_transformations[1].weights_init = Uniform(width=.11)
+    convnet.initialize()
+
+    return convnet
