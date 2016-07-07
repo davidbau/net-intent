@@ -5,10 +5,10 @@ from collections import OrderedDict, defaultdict
 from theano import tensor
 from theano import gradient
 
-from blocks.algorithms import GradientDescent
 from blocks.bricks import application
 from blocks.bricks import Linear
 from blocks.bricks.base import Brick
+from blocks.extensions import SimpleExtension
 from blocks.roles import PersistentRole
 from blocks.roles import add_role
 from blocks.utils import shared_floatx_zeros
@@ -51,11 +51,11 @@ def _create_synpic_updates(synpic, jacobian, attributed_pic):
     return (synpic, synpic * 0.97 -
             tensor.tensordot(jacobian, attributed_pic, axes=((0,), (0,))))
 
-class SynpicGradientDescent(GradientDescent):
+class SynpicExtension(SimpleExtension):
     def __init__(self, synpic_parameters=None,
             case_costs=None, pics=None, case_labels=None,
             batch_size=None, pic_size=None, label_count=None, **kwargs):
-        super(SynpicGradientDescent, self).__init__(**kwargs)
+        kwargs.setdefault("before_training", True)
         center_val = 0.5
         self.input_pics = pics
         self.case_costs = case_costs
@@ -83,13 +83,18 @@ class SynpicGradientDescent(GradientDescent):
                 self.synpics[param],
                 self.jacobians[param],
                 attributed_pics) for param in self.synpic_parameters])
-        self.add_updates(self.synpic_updates)
+        super(SynpicExtension, self).__init__(**kwargs)
+
+    def do(self, callback_name, *args):
+        self.parse_args(callback_name, args)
+        if callback_name == 'before_training':
+            self.main_loop.algorithm.add_updates(self.synpic_updates)
 
     def _compute_jacobians(self):
         if self.case_costs is None or self.case_costs.ndim == 0:
             raise ValueError("can't infer jacobians; no case_costs specified")
-        elif self.synpic_parameters is None or len(self.parameters) == 0:
-            raise ValueError("can't infer jacobians; no parameters specified")
+        elif self.synpic_parameters is None:
+            raise ValueError("can't infer jacobians; no synpic_parameters")
         logging.info("Taking the synpic jacobians")
         jacobians = gradient.jacobian(self.case_costs, self.synpic_parameters)
         jacobian_map = OrderedDict(equizip(self.synpic_parameters, jacobians))
@@ -193,3 +198,4 @@ class SynpicGradientDescent(GradientDescent):
                         col * unit_width), im[label, :, :])
                 pos += 1
         filmstrip.save(filename)
+

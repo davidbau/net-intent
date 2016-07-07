@@ -11,7 +11,7 @@ from argparse import ArgumentParser
 
 from theano import tensor
 
-from blocks.algorithms import Scale, AdaDelta
+from blocks.algorithms import Scale, AdaDelta, GradientDescent
 from blocks.bricks import Activation
 from blocks.bricks.cost import CategoricalCrossEntropy, MisclassificationRate
 from blocks.extensions import FinishAfter, Timing, Printing, ProgressBar
@@ -31,17 +31,17 @@ from fuel.datasets import MNIST
 from fuel.schemes import ShuffledScheme
 from fuel.streams import DataStream
 from intent.lenet import LeNet, create_lenet_5
-from intent.synpic import SynpicGradientDescent
+from intent.synpic import SynpicExtension
 from intent.synpic import CasewiseCrossEntropy
 import numpy
 import pickle
 
 class SaveImages(SimpleExtension):
-    def __init__(self, algorithm=None, pattern=None,
+    def __init__(self, synpic=None, pattern=None,
             title=None, data=None, graph=None, graph_len=None,
             unit_order=None, **kwargs):
         kwargs.setdefault("before_training", True)
-        self.algorithm = algorithm
+        self.synpic = synpic
         self.count = 0
         if pattern is None:
             pattern = 'pics/syn/%s_%04d.jpg'
@@ -53,7 +53,6 @@ class SaveImages(SimpleExtension):
         self.graph_len = graph_len
         self.graph_data = None
         # Now create an AggregationBuffer for theano variables to monitor
-        variables = set()
         self.variables = AggregationBuffer(data, use_take_last=True)
         super(SaveImages, self).__init__(**kwargs)
 
@@ -79,7 +78,7 @@ class SaveImages(SimpleExtension):
                 graph = self.graph_data / self.graph_data.max()
             filename = self.pattern % ('composite', self.count)
             self.count += 1
-            self.algorithm.save_composite_image(
+            self.synpic.save_composite_image(
                     title=title, graph=graph, graph_len=self.graph_len,
                     unit_order=self.unit_order,
                     filename=filename, aspect_ratio=16.0/9.0)
@@ -108,7 +107,7 @@ def main(save_to, num_epochs, resume=False, **kwargs):
     if main_loop.status['epochs_done'] < num_epochs:
         main_loop.run()
 
-    main_loop.algorithm.save_images()
+    # main_loop.algorithm.save_images()
 
 def create_main_loop(save_to, num_epochs, unit_order=None,
         batch_size=500, num_batches=None):
@@ -147,9 +146,12 @@ def create_main_loop(save_to, num_epochs, unit_order=None,
     biases = VariableFilter(roles=[BIAS])(cg.parameters)
 
     # Train with simple SGD
-    algorithm = SynpicGradientDescent(
+    algorithm = GradientDescent(
         cost=cost,
         parameters=cg.parameters,
+        step_rule=AdaDelta())
+
+    synpic_extension = SynpicExtension(
         synpic_parameters=biases,
         case_costs=case_costs,
         case_labels=y,
@@ -157,7 +159,8 @@ def create_main_loop(save_to, num_epochs, unit_order=None,
         batch_size=batch_size,
         pic_size=image_size,
         label_count=output_size,
-        step_rule=AdaDelta())
+        after_batch=True)
+
 
     # Impose an orderint for the SaveImages extension
     if unit_order is not None:
@@ -171,7 +174,8 @@ def create_main_loop(save_to, num_epochs, unit_order=None,
     extensions = [Timing(),
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
-                  SaveImages(algorithm=algorithm,
+                  synpic_extension,
+                  SaveImages(synpic=synpic_extension,
                       title="LeNet-5: batch {i}, " +
                           "cost {cost_with_regularization:.2f}, " + 
                           "trainerr {error_rate:.3f}",
