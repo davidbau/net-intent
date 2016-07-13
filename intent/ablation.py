@@ -55,8 +55,7 @@ class ConfusionMatrix(Brick):
     def apply(self, y, y_hat):
         predicted = y_hat.argmax(axis=1)
         expanded_y = tensor.extra_ops.to_one_hot(y, y_hat.shape[1])
-        expanded_y_hat = tensor.extra_ops.to_one_hot(
-                predicted, y_hat.shape[1])
+        expanded_y_hat = tensor.extra_ops.to_one_hot(predicted, y_hat.shape[1])
         counts = tensor.tensordot(expanded_y, expanded_y_hat, axes=[[0], [0]])
         return counts.astype('int32')
 
@@ -71,11 +70,14 @@ class ConfusionImage(Brick):
     @application(outputs=["confusion_image"])
     def apply(self, y, y_hat, x):
         predicted = y_hat.argmax(axis=1)
-        expanded = numpy.zeros(
-                (y.shape[0], y_hat.shape[1], y_hat.shape[1]) + x.shape)
-        expanded[(numpy.range[y.shape[0]], y, predicted) +
-                (slice(None),) * len(x.shape - 1)] = x
-        result = expanded.sum(axis=0)
+        # both expanded_y and expanded_y_hat are shape (cases, labels)
+        expanded_y = tensor.extra_ops.to_one_hot(y, y_hat.shape[1])
+        expanded_y_hat = tensor.extra_ops.to_one_hot(predicted, y_hat.shape[1])
+        # pad vectors and elementwise multiply for (cases, labels, labels)
+        expanded_confusion = (tensor.shape_padaxis(expanded_y, 2) *
+                tensor.shape_padaxis(expanded_y_hat, 1))
+        # now result is (labels, labels, y_dim, x_dim)
+        result = tensor.tensordot(expanded_confusion, x, axes=([0], [0]))
         return result
 
 def ablate_inputs(ablation, activations, weights, axis=None, compensate=True):

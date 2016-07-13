@@ -3,6 +3,7 @@ import os
 import os.path
 import numpy
 import pkg_resources
+import io
 
 # Figuring how to conform to an aspect ratio:
 # uw = unit width, uh = unit height
@@ -121,3 +122,10 @@ class Filmstrip:
         #if self.im.size[0] * self.im.size[1] < 640 ** 2:
         opts = { 'subsampling': 0, 'quality': 99 }
         self.im.save(filename, 'JPEG', **opts)
+
+    def save_bytes(self, format='PNG'):
+        output = io.BytesIO()
+        self.im.save(output, format=format)
+        contents = output.getvalue()
+        output.close()
+        return contents
