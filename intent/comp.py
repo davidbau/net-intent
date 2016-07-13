@@ -236,6 +236,7 @@ def create_main_loop(save_to, num_epochs, unit_order=None,
         case_labels=y,
         pics=x,
         label_count=output_size,
+        rectify=True,
         data_stream=mnist_test_stream,
         after_batch=True)
 

@@ -175,6 +175,8 @@ def main(save_to, num_epochs, resume=False, **kwargs):
     if main_loop.status['epochs_done'] < num_epochs:
         main_loop.run()
 
+    main_loop.synpic.save_images()
+
 def create_main_loop(save_to, num_epochs, unit_order=None,
         batch_size=500, num_batches=None):
     image_size = (28, 28)
@@ -268,6 +270,7 @@ def create_main_loop(save_to, num_epochs, unit_order=None,
         mnist_train_stream,
         model=model,
         extensions=extensions)
+    main_loop.synpic = synpic_extension
 
     return main_loop
 

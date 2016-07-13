@@ -26,7 +26,7 @@ ACTPIC_STATISTICS = ActpicStatisticsRole()
 
 class ActpicExtension(SimpleExtension):
     def __init__(self, actpic_variables=None, pics=None, case_labels=None,
-            label_count=None, data_stream=None, **kwargs):
+            label_count=None, data_stream=None, rectify=False, **kwargs):
         center_val = 0.5
         self.input_pics = pics
         # self.batch_size = batch_size
@@ -43,7 +43,7 @@ class ActpicExtension(SimpleExtension):
             zeroed_pics[:, 0, :, :],
             axes=0)
         self.actpics = [self._create_actpic_image_for(
-              name + '_actpic', var, attributed_pics)
+              name + '_actpic', var, attributed_pics, rectify)
                 for name, var in self.actpic_variables.items()]
         self.evaluator = DatasetEvaluator(self.actpics)
         self.data_stream = data_stream
@@ -54,7 +54,7 @@ class ActpicExtension(SimpleExtension):
         self.parse_args(callback_name, args)
         self.results = self.evaluator.evaluate(self.data_stream)
 
-    def _create_actpic_image_for(self, name, var, pics):
+    def _create_actpic_image_for(self, name, var, pics, rectify):
         # var is (cases, unit1, unit2, ...)
         # pics is (cases, labels, picy, picx)
         # output is (unit1, unit2... labels, picy, picx)
@@ -63,6 +63,8 @@ class ActpicExtension(SimpleExtension):
         # just take the whole image as contribution as follows.
         while var.ndim > 2:
             var = var.sum(axis=var.ndim - 1)
+        if rectify:
+            var = tensor.nnet.relu(var)
         return tensor.tensordot(var, pics, axes=[[0],[0]]).copy(name=name)
 
     def get_picdata(self):
