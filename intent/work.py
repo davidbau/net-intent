@@ -95,15 +95,11 @@ class Concatenate(AggregationScheme):
 
         return aggregator
 
-class ActiveUnitCount(Brick):
-    """Confusion Image.
-
-    (correct_labels, predicted_labels)
-
-    Outputs a matrix with sum of images in each cell of the confusion matrix
-    table.
+class SensitiveUnitCount(Brick):
+    """Counts number of units (or parameters) with nonzero gradient for
+    each instance.
     """
-    @application(outputs=["active_unit_count"])
+    @application(outputs=["sensitive_unit_count"])
     def apply(self, y, y_hat, biases):
         cost = tensor.nnet.categorical_crossentropy(y_hat, y.flatten())
         predicted = y_hat.argmax(axis=1)
@@ -111,11 +107,41 @@ class ActiveUnitCount(Brick):
         jacobians = gradient.jacobian(cost, biases)
         counts = tensor.zeros_like(y)
         for j in jacobians:
-            counts += Print('neq', attrs=['shape'])(
-                    tensor.neq(Print('j', attrs=['shape'])(j), 0)
-                    ).sum(axis=1)
+            counts += tensor.neq(j, 0).sum(axis=1)
         return counts
 
+class ActiveUnitCount(Brick):
+    """Counts number of units with nonzero activation for each instance.
+    """
+    @application(outputs=["active_unit_count"])
+    def apply(self, outs):
+        counts = None
+        for o in outs:
+            while o.ndim > 2:
+                o = o.max(axis=o.ndim - 1)
+            count = tensor.gt(o, 0).sum(axis=1)
+            if counts is None:
+                counts = count
+            else:
+                counts += count
+        return counts
+
+class IgnoredUnitCount(Brick):
+    """Counts number of units (or parameters) with nonzero gradient for
+    each instance.
+    """
+    @application(outputs=["sensitive_unit_count"])
+    def apply(self, y, y_hat, biases, outs):
+        cost = tensor.nnet.categorical_crossentropy(y_hat, y.flatten())
+        predicted = y_hat.argmax(axis=1)
+        # Here we just count the number of unit biases with nonzero gradient
+        jacobians = gradient.jacobian(cost, biases)
+        counts = tensor.zeros_like(y)
+        for j, o in zip(jacobians, outs):
+            while o.ndim > 2:
+                o = o.max(axis=o.ndim - 1)
+            counts += (tensor.gt(o, 0) * tensor.eq(j, 0)).sum(axis=1)
+        return counts
 
 class WorkRater:
     def __init__(self, save_to):
@@ -138,22 +164,37 @@ class WorkRater:
             return '/'.join([''] + [b.name for b in brick.get_unique_path()])
 
         # Find layer outputs to probe
-        outs = OrderedDict((full_brick_name(get_brick(out)), out)
+        outmap = OrderedDict((full_brick_name(get_brick(out)), out)
                 for out in VariableFilter(
                     roles=[OUTPUT], bricks=[Convolutional, Linear])(
                         cg.variables))
         # Generate pics for biases
         biases = VariableFilter(roles=[BIAS])(cg.parameters)
 
+        # Generate parallel array, in the same order, for outputs
+        outs = [outmap[full_brick_name(get_brick(b))] for b in biases]
+
         # Figure work count
         error_rate = (MisclassificationRate().apply(y.flatten(), probs)
                       .copy(name='error_rate'))
-        active_unit_count = (ActiveUnitCount().apply(y.flatten(), probs, biases)
-                      .copy(name='active_unit_count'))
+        sensitive_unit_count = (SensitiveUnitCount().apply(
+                y.flatten(), probs, biases).copy(name='sensitive_unit_count'))
+        sensitive_unit_count.tag.aggregation_scheme = (
+                Concatenate(sensitive_unit_count))
+        active_unit_count = (ActiveUnitCount().apply(
+                outs).copy(name='active_unit_count'))
         active_unit_count.tag.aggregation_scheme = (
                 Concatenate(active_unit_count))
+        ignored_unit_count = (IgnoredUnitCount().apply(y.flatten(),
+                probs, biases, outs).copy(name='ignored_unit_count'))
+        ignored_unit_count.tag.aggregation_scheme = (
+                Concatenate(ignored_unit_count))
 
-        model = Model([error_rate, active_unit_count])
+        model = Model([
+            error_rate,
+            sensitive_unit_count,
+            active_unit_count,
+            ignored_unit_count])
 
         # Load it with trained parameters
         params = load_parameters(open(save_to, 'rb'))
@@ -165,16 +206,26 @@ class WorkRater:
             iteration_scheme=SequentialScheme(
                 mnist_test.num_examples, batch_size))
 
-        evaluator = DatasetEvaluator(
-                [error_rate, active_unit_count])
+        evaluator = DatasetEvaluator([
+            error_rate,
+            sensitive_unit_count,
+            active_unit_count,
+            ignored_unit_count
+            ])
         results = evaluator.evaluate(mnist_test_stream)
-        active_unit_count = results['active_unit_count']
-        sorted_instances = active_unit_count.argsort()
-        filmstrip = Filmstrip(image_shape=(28, 28), grid_shape=(100, 100))
-        for i, index in enumerate(sorted_instances):
-            filmstrip.set_image((i // 100, i % 100),
-                    mnist_test.get_data(request=index)[0])
-        filmstrip.save('sorted.jpg')
+
+        def save_ranked_image(scores, filename):
+            sorted_instances = scores.argsort()
+            filmstrip = Filmstrip(image_shape=(28, 28), grid_shape=(100, 100))
+            for i, index in enumerate(sorted_instances):
+                filmstrip.set_image((i // 100, i % 100),
+                        mnist_test.get_data(request=index)[0])
+            filmstrip.save(filename)
+
+        save_ranked_image(results['sensitive_unit_count'], 'sensitive.jpg')
+        save_ranked_image(results['active_unit_count'], 'active.jpg')
+        save_ranked_image(results['ignored_unit_count'], 'ignored.jpg')
+        # import pdb; pdb.set_trace()
 
 
 if __name__ == "__main__":
