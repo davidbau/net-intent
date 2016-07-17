@@ -114,14 +114,21 @@ def main(save_to):
 
     learning_rate = shared_floatx(0.01, 'learning_rate')
     unit = shared_floatx(0, 'unit', dtype='int64')
+    negate = False
+    suffix = '_negsynth.jpg' if negate else '_synth.jpg'
     for output in outs:
-        dims = get_brick(output).get_dims(['output'])[0]
+        layer = get_brick(output)
+        dims = layer.get_dims(['output'])[0]
+        if negate:
+            measure = -output
+        else:
+            measure = output
         if isinstance(dims, numbers.Integral):
             dims = (dims, )
             costvec = -tensor.log(tensor.nnet.softmax(
-                output)[:,unit].flatten())
+                measure)[:,unit].flatten())
         else:
-            flatout = output.flatten(ndim=3)
+            flatout = measure.flatten(ndim=3)
             maxout = flatout.max(axis=2)
             costvec = -tensor.log(tensor.nnet.softmax(
                 maxout)[:,unit].flatten())
@@ -137,7 +144,6 @@ def main(save_to):
         filmstrip = Filmstrip(
             basis_init.shape[-2:], (dims[0], basis_init.shape[0]),
             background='red')
-        layer = get_brick(output)
         for u in range(dims[0]):
             unit.set_value(u)
             x.set_value(basis_init)
@@ -149,11 +155,11 @@ def main(save_to):
                     result = x.get_value()
                     for i2 in range(basis_init.shape[0]):
                         filmstrip.set_image((u, i2), result[i2,:,:,:])
-                    filmstrip.save(layer.name + '_synth.jpg')
+                    filmstrip.save(layer.name + suffix)
             result = x.get_value()
             for index in range(basis_init.shape[0]):
                 filmstrip.set_image((u, index), result[index,:,:,:])
-            filmstrip.save(layer.name + '_synth.jpg')
+            filmstrip.save(layer.name + suffix)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

@@ -63,7 +63,9 @@ class ActpicExtension(SimpleExtension):
         # just take the whole image as contribution as follows.
         while var.ndim > 2:
             var = var.sum(axis=var.ndim - 1)
-        if rectify:
+        if rectify == -1:
+            var = -tensor.nnet.relu(-var)
+        elif rectify:
             var = tensor.nnet.relu(var)
         return tensor.tensordot(var, pics, axes=[[0],[0]]).copy(name=name)
 

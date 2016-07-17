@@ -16,3 +16,8 @@ env/
 build/
 fuel/
 *.egg-info/
+
+# output files
+*.jpg
+movies/
+pics/
