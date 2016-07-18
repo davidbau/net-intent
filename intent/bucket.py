@@ -129,9 +129,24 @@ class BucketVisualizer:
             matched = selected <= 0
         return matched.sum() == len(the_set)
 
+    def activations_for_sample(self, index):
+        return self.table[index, :]
+
+    def positive_for_sample(self, index):
+        return numpy.where(self.activations_for_sample(index) > 0)[0]
+
+    def negative_for_sample(self, index):
+        return numpy.where(self.activations_for_sample(index) <= 0)[0]
+
+    def prediction_for_sample(self, index):
+        return self.table[index, :10].argmax()
+
+    def label_for_sample(self, index):
+        return self.mnist_test.get_data(request=index)[1][0]
+
     def filter_image_bytes(self,
             positive_set=None, negative_set=None, sort_by=None,
-            columns=100, limit=None, descending=False):
+            columns=100, limit=None, ulimit=None, descending=False):
         include_indexes = [ind for ind in range(self.table.shape[0])
                 if (self.all_match(ind, positive_set, True) and
                     self.all_match(ind, negative_set, False))]
@@ -139,8 +154,11 @@ class BucketVisualizer:
             include_indexes.sort(key=lambda x: self.table[x, sort_by].sum())
         if descending:
             include_indexes.reverse()
-        if limit:
-            include_indexes = include_indexes[:limit]
+        if limit or ulimit and not(
+                limit and ulimit and limit + ulimit >= len(include_indexes)):
+            lower = include_indexes[:limit] if limit else []
+            upper = include_indexes[-ulimit:] if ulimit else []
+            include_indexes = lower + upper
         count = max(1, len(include_indexes))
         grid_shape = (((count - 1) // columns + 1), min(columns, count))
 
@@ -149,7 +167,13 @@ class BucketVisualizer:
             filmstrip.set_image((i // columns, i % columns),
                         self.mnist_test.get_data(request=index)[0])
         return filmstrip.save_bytes()
-    
+
+    def example_count(self):
+        return self.table.shape[0]
+
+    def unit_count(self):
+        return self.table.shape[1]
+
     def load_act_table(self, save_to, act_table):
         try:
             return pickle.load(open(act_table, 'rb'))
@@ -224,23 +248,32 @@ class QueryRequestHandler(BaseHTTPRequestHandler):
  
     # GET
     def do_GET(self):
-        from urllib.parse import urlparse, parse_qs
+        from urllib.parse import urlparse, parse_qsl
         url = urlparse(self.path)
-        fields = parse_qs(url.query)
+        fields = OrderedDict(parse_qsl(url.query))
         self.dispatch(url, fields)
 
     def do_POST(self):
-        from urllib.parse import urlparse, parse_qs
+        from urllib.parse import urlparse, parse_qsl
         url = urlparse(self.path)
-        fields = parse_qs(url.query)
+        fields = OrderedDict(parse_qsl(url.query))
         length = int(self.headers.getheader('content-length'))
         field_data = self.rfile.read(length)
-        fields.update(urlparse.parse_qs(field_data))
+        fields.update(urlparse.parse_qsl(field_data))
         self.dispatch(url, fields)
 
     def dispatch(self, url, fields):
         if url.path == '/bucket':
             self.bucket(url, fields)
+            return
+        if url.path == '/similar_to':
+            self.similar_to(url, fields)
+            return
+        if url.path == '/examples':
+            self.examples(url, fields)
+            return
+        if url.path == '/units':
+            self.units(url, fields)
             return
 
         # Send response status code
@@ -255,27 +288,101 @@ class QueryRequestHandler(BaseHTTPRequestHandler):
         # Write content as utf-8 data
         self.wfile.write(bytes(message, "utf8"))
 
+    def examples(self, url, fields):
+        from urllib.parse import urlencode
+        html = []
+        num = 30
+        if 'num' in fields:
+            num = int(fields['num'])
+        for x in range(num):
+            html.append(
+                '<nobr>%d:%d-%d<img src="/similar_to?example=%d&%s"></nobr><br>' % (
+                    x,
+                    self.server.tester.label_for_sample(x),
+                    self.server.tester.prediction_for_sample(x),
+                    x,
+                    urlencode(fields)))
+        # Form HTML page response
+        self.send_response(200)
+        self.send_header('Content-type','text/html')
+        self.end_headers()
+        self.wfile.write(bytes('\n'.join(html), "utf8"))
+
+    def units(self, url, fields):
+        from urllib.parse import urlencode
+        html = []
+        limit = ulimit = 20
+        if 'limit' in fields:
+            limit = int(fields['limit'])
+        if 'ulimit' in fields:
+            ulimit = int(fields['ulimit'])
+        for u in range(self.server.tester.unit_count()):
+            html.append(
+                '<nobr>%d<img src="/bucket?sort_by=%d&limit=%d&ulimit=%d"></nobr><br>'
+                % (u, u, limit, ulimit))
+        # Form HTML page response
+        self.send_response(200)
+        self.send_header('Content-type','text/html')
+        self.end_headers()
+        self.wfile.write(bytes('\n'.join(html), "utf8"))
+
+    def similar_to(self, url, fields):
+        from urllib.parse import urlencode
+        example = None
+        if 'example' in fields:
+            example = int(fields['example'])
+        descending = False
+        signs = 'PN'
+        if 'signs' in fields:
+            signs = fields['signs']
+        rangepair = None
+        if 'range' in fields:
+            rangepair = [int(u) for u in fields['range'].split(',')]
+        query = []
+        if 'P' in signs:
+            inds = self.server.tester.positive_for_sample(example)
+            if rangepair:
+                inds = [i for i in inds if i >= rangepair[0] and i < rangepair[1]]
+            query.append('positive=' + ','.join([str(u) for u in inds]))
+        if 'N' in signs:
+            if len(query): query += '&'
+            inds = self.server.tester.negative_for_sample(example)
+            if rangepair:
+                inds = [i for i in inds if i >= rangepair[0] and i < rangepair[1]]
+            query.append('negative=' + ','.join([str(u) for u in inds]))
+        forward_keys = dict((k, v) for k, v in fields.items()
+                if k not in ['example', 'signs', 'range'])
+        if len(forward_keys):
+            query.append(urlencode(forward_keys))
+
+        self.send_response(302)
+        self.send_header('Location', '/bucket?%s' % '&'.join(query))
+        self.end_headers()
+
     def bucket(self, url, fields):
         positive = []
         if 'positive' in fields:
-            positive = [int(u) for u in fields['positive'][0].split(',')]
+            positive = [int(u) for u in fields['positive'].split(',')]
         negative = []
         if 'negative' in fields:
-            negative = [int(u) for u in fields['negative'][0].split(',')]
+            negative = [int(u) for u in fields['negative'].split(',')]
         sort_by = []
         if 'sort_by' in fields:
-            sort_by = [int(u) for u in fields['sort_by'][0].split(',')]
+            sort_by = [int(u) for u in fields['sort_by'].split(',')]
         columns = 100
         if 'columns' in fields:
-            columns = int(fields['columns'][0])
+            columns = int(fields['columns'])
         limit = None
         if 'limit' in fields:
-            limit = int(fields['limit'][0])
+            limit = int(fields['limit'])
+        ulimit = None
+        if 'ulimit' in fields:
+            ulimit = int(fields['ulimit'])
         descending = False
         if 'descending' in fields:
             descending = True
         result = self.server.tester.filter_image_bytes(
-                positive, negative, sort_by, columns, limit, descending)
+                positive, negative, sort_by, columns, limit, ulimit, descending)
         self.send_response(200)
         self.send_header('Content-type', 'image/png')
         self.end_headers()
