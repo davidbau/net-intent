@@ -10,8 +10,9 @@ import logging
 from argparse import ArgumentParser
 
 from theano import tensor
+import theano
 
-from blocks.algorithms import Scale, AdaDelta, GradientDescent
+from blocks.algorithms import Scale, AdaDelta
 from blocks.bricks import Activation
 from blocks.bricks.cost import CategoricalCrossEntropy, MisclassificationRate
 from blocks.extensions import FinishAfter, Timing, Printing, ProgressBar
@@ -30,12 +31,13 @@ from blocks.serialization import load
 from fuel.datasets import MNIST
 from fuel.schemes import ShuffledScheme
 from fuel.streams import DataStream
-from intent.lenet import LeNet, create_lenet_5
+from intent.lenet import LeNet, create_lenet_5, create_sorted_lenet
 from intent.synpic import SynpicExtension
 from intent.synpic import CasewiseCrossEntropy
 from collections import OrderedDict
-from filmstrip import Filmstrip
-from filmstrip import plan_grid
+from intent.filmstrip import Filmstrip
+from intent.filmstrip import plan_grid
+from intent.sparse import SparseGradientDescent, fc_mask
 import numpy
 import pickle
 
@@ -181,7 +183,8 @@ def create_main_loop(save_to, num_epochs, unit_order=None,
         batch_size=500, num_batches=None):
     image_size = (28, 28)
     output_size = 10
-    convnet = create_lenet_5()
+    # convnet = create_lenet_5()
+    convnet = create_sorted_lenet()
     x = tensor.tensor4('features')
     y = tensor.lmatrix('targets')
 
@@ -196,7 +199,7 @@ def create_main_loop(save_to, num_epochs, unit_order=None,
 
     # Apply regularization to the cost
     weights = VariableFilter(roles=[WEIGHT])(cg.variables)
-    cost = cost + sum([0.0003 * (W ** 2).sum() for W in weights])
+    cost = cost + sum([0.0005 * (W ** 2).sum() for W in weights])
     cost.name = 'cost_with_regularization'
 
     mnist_train = MNIST(("train",))
@@ -213,10 +216,11 @@ def create_main_loop(save_to, num_epochs, unit_order=None,
     # Generate pics for biases
     biases = VariableFilter(roles=[BIAS])(cg.parameters)
 
-    # Train with simple SGD
-    algorithm = GradientDescent(
+    # Train with sparse SGD
+    algorithm = SparseGradientDescent(
         cost=cost,
         parameters=cg.parameters,
+        mask={ weights[0]: fc_mask(output_size) },
         step_rule=AdaDelta())
 
     synpic_extension = SynpicExtension(

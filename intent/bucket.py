@@ -45,7 +45,7 @@ from intent.ablation import ConfusionMatrix
 from intent.ablation import ConfusionImage
 from intent.ablation import Sum
 from intent.ablation import ablate_inputs
-from intent.lenet import create_lenet_5
+from intent.lenet import create_sorted_lenet
 from intent.maxact import MaximumActivationSearch
 from intent.filmstrip import Filmstrip
 from intent.rf import make_mask
@@ -184,7 +184,7 @@ class BucketVisualizer:
         batch_size = 500
         image_size = (28, 28)
         output_size = 10
-        convnet = create_lenet_5()
+        convnet = create_sorted_lenet()
         layers = convnet.layers
 
         x = tensor.tensor4('features')

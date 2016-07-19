@@ -8,7 +8,7 @@ It is going to reach around 0.8% error rate on the test set.
 
 """
 import numpy as np
-
+import theano
 
 from blocks.bricks import FeedforwardSequence
 from blocks.bricks import Initializable
@@ -17,7 +17,7 @@ from blocks.bricks import Rectifier
 from blocks.bricks import Softmax
 from blocks.bricks.conv import Convolutional, ConvolutionalSequence
 from blocks.bricks.conv import Flattener, MaxPooling
-from blocks.initialization import Constant, Uniform
+from blocks.initialization import Constant, Uniform, NdarrayInitialization
 from toolz.itertoolz import interleave
 
 
@@ -150,6 +150,89 @@ def create_lenet_5():
     convnet.layers[1].weights_init = Uniform(width=.09)
     convnet.top_mlp.linear_transformations[0].weights_init = Uniform(width=.08)
     convnet.top_mlp.linear_transformations[1].weights_init = Uniform(width=.11)
+    convnet.initialize()
+
+    return convnet
+
+class SparsePairwiseUniform(NdarrayInitialization):
+    def __init__(self, mean=0., width=None, std=None):
+        if (width is not None) == (std is not None):
+            raise ValueError("must specify width or std, "
+                             "but not both")
+        if std is not None:
+            # Variance of a uniform is 1/12 * width^2
+            self.width = np.sqrt(12) * std
+        else:
+            self.width = width
+        self.mean = mean
+
+    def generate(self, rng, shape):
+        w = self.width / 2
+        mm = rng.uniform(self.mean - w, self.mean + w, size=shape)
+        mask = np.zeros_like(mm)
+        outcount = shape[1]
+        for x in range(outcount):
+            for y in range(outcount - 1):
+                mask[x * (outcount - 1) + y, x] = 1
+                mask[y * (outcount - 1) + x - 1 + (outcount if y >= x else 0), x] = 1
+        m = mm * mask
+        return m.astype(theano.config.floatX)
+
+    def __repr__(self):
+        return repr_attrs(self, 'mean', 'width')
+
+
+class SparsePairwiseConstant(NdarrayInitialization):
+    def __init__(self, k=0.1):
+        self.k = k
+        pass
+
+    def generate(self, rng, shape):
+        mask = np.zeros(shape, dtype=theano.config.floatX)
+        outcount = shape[1]
+        for x in range(outcount):
+            for y in range(outcount - 1):
+                mask[x * (outcount - 1) + y, x] = self.k
+                mask[y * (outcount - 1) + x - 1 + (outcount if y >= x else 0), x] = (
+                        -self.k)
+        return mask
+
+    def __repr__(self):
+        return repr_attrs(self, 'mean', 'width')
+
+def create_sorted_lenet():
+    feature_maps = [6, 16]
+    mlp_hiddens = [120, 90]
+    conv_sizes = [5, 5]
+    pool_sizes = [2, 2]
+    image_size = (28, 28)
+    output_size = 10
+
+    # The above are from LeCun's paper. The blocks example had:
+    #    feature_maps = [20, 50]
+    #    mlp_hiddens = [500]
+
+    # Use ReLUs everywhere and softmax for the final prediction
+    conv_activations = [Rectifier() for _ in feature_maps]
+    mlp_activations = [Rectifier() for _ in mlp_hiddens] + [Softmax()]
+    convnet = LeNet(conv_activations, 1, image_size,
+                    filter_sizes=zip(conv_sizes, conv_sizes),
+                    feature_maps=feature_maps,
+                    pooling_sizes=zip(pool_sizes, pool_sizes),
+                    top_mlp_activations=mlp_activations,
+                    top_mlp_dims=mlp_hiddens + [output_size],
+                    border_mode='valid',
+                    weights_init=Uniform(width=.2),
+                    biases_init=Constant(0))
+    # We push initialization config to set different initialization schemes
+    # for convolutional layers.
+    convnet.push_initialization_config()
+    convnet.layers[0].weights_init = Uniform(width=.2)
+    convnet.layers[1].weights_init = Uniform(width=.09)
+    convnet.top_mlp.linear_transformations[0].weights_init = Uniform(width=.08)
+    convnet.top_mlp.linear_transformations[1].weights_init = Uniform(width=.11)
+    convnet.top_mlp.linear_transformations[2].weights_init = (
+            SparsePairwiseConstant(k=.2)) # SparsePairwiseUniform(width=.2))
     convnet.initialize()
 
     return convnet

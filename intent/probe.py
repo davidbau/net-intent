@@ -35,7 +35,7 @@ from fuel.datasets import MNIST
 from fuel.schemes import SequentialScheme
 from fuel.schemes import ShuffledScheme
 from fuel.streams import DataStream
-from intent.lenet import LeNet
+from intent.lenet import LeNet, create_sorted_lenet
 from intent.maxact import MaximumActivationSearch
 from intent.filmstrip import Filmstrip
 from intent.rf import make_mask
@@ -73,46 +73,7 @@ def extract_sample(activations, data_stream, n=2000):
 
 def main(save_to, hist_file):
     batch_size = 365
-    feature_maps = [6, 16]
-    mlp_hiddens = [120, 84]
-    conv_sizes = [5, 5]
-    pool_sizes = [2, 2]
-    image_size = (28, 28)
-    output_size = 10
-
-    # The above are from LeCun's paper. The blocks example had:
-    #    feature_maps = [20, 50]
-    #    mlp_hiddens = [500]
-
-    # Use ReLUs everywhere and softmax for the final prediction
-    conv_activations = [Rectifier() for _ in feature_maps]
-    mlp_activations = [Rectifier() for _ in mlp_hiddens] + [Softmax()]
-    convnet = LeNet(conv_activations, 1, image_size,
-                    filter_sizes=zip(conv_sizes, conv_sizes),
-                    feature_maps=feature_maps,
-                    pooling_sizes=zip(pool_sizes, pool_sizes),
-                    top_mlp_activations=mlp_activations,
-                    top_mlp_dims=mlp_hiddens + [output_size],
-                    border_mode='valid',
-                    weights_init=Uniform(width=.2),
-                    biases_init=Constant(0))
-    # We push initialization config to set different initialization schemes
-    # for convolutional layers.
-    convnet.push_initialization_config()
-    convnet.layers[0].weights_init = Uniform(width=.2)
-    convnet.layers[1].weights_init = Uniform(width=.09)
-    convnet.top_mlp.linear_transformations[0].weights_init = Uniform(width=.08)
-    convnet.top_mlp.linear_transformations[1].weights_init = Uniform(width=.11)
-    convnet.initialize()
-    logging.info("Input dim: {} {} {}".format(
-        *convnet.children[0].get_dim('input_')))
-    for i, layer in enumerate(convnet.layers):
-        if isinstance(layer, Activation):
-            logging.info("Layer {} ({})".format(
-                i, layer.__class__.__name__))
-        else:
-            logging.info("Layer {} ({}) dim: {} {} {}".format(
-                i, layer.__class__.__name__, *layer.get_dim('output')))
+    convnet = create_sorted_lenet()
 
     mnist_test = MNIST(("test",), sources=['features', 'targets'])
 
@@ -159,15 +120,16 @@ def main(save_to, hist_file):
             mnist_test.num_examples, batch_size))
 
     # Probe the given layer
-    target_layer = '/lenet/mlp/linear_0'
-    next_layer_param = '/lenet/mlp/linear_1.W'
+    target_layer = '/lenet/mlp/linear_1'
+    next_layer_param = '/lenet/mlp/linear_2.W'
     sample = extract_sample(outs[target_layer], mnist_test_stream)
     print('sample shape', sample.shape)
 
     # Figure neurons to ablate
-    hist = histograms[('linear_1', 'b')]
-    targets = [i for i in range(hist.shape[1])
-            if hist[2, i] * hist[7, i] < 0]
+    # hist = histograms[('linear_1', 'b')]
+    # targets = [i for i in range(hist.shape[1])
+    #         if hist[2, i] * hist[7, i] < 0]
+    targets = [44, 85]
     print('ablating', len(targets), ':', targets)
 
     # Now adjust the next layer weights based on the probe

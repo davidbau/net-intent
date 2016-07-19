@@ -28,7 +28,7 @@ $(MNIST): $(VENV)
 		&& $(FUEL_DOWNLOAD) mnist -d $(FUEL_DATA_PATH) --clear
 
 movie: $(VENV) $(MNIST) Makefile histograms.pkl
-	$(PYTHON) intent/pic.py --num-epochs=10 --unit-order=histograms.pkl
+	$(PYTHON) intent/pic.py --num-epochs=10 # --unit-order=histograms.pkl
 	sh makemovies.sh
 
 movie2: $(VENV) $(MNIST) Makefile histograms.pkl
@@ -36,7 +36,7 @@ movie2: $(VENV) $(MNIST) Makefile histograms.pkl
 	sh makemovies.sh
 
 histograms.pkl: $(VENV) $(MNIST) Makefile
-	$(PYTHON) intent/run.py --num-epochs=25
+	$(PYTHON) intent/run.py --num-epochs=22
 
 solve: histograms.pkl
 
