@@ -11,7 +11,7 @@ from argparse import ArgumentParser
 
 from theano import tensor
 
-from blocks.algorithms import Scale, AdaDelta
+from blocks.algorithms import Scale, AdaDelta, GradientDescent
 from blocks.bricks import Rectifier
 from blocks.bricks import Activation
 from blocks.bricks import Softmax
@@ -30,13 +30,14 @@ from blocks.roles import WEIGHT
 from fuel.datasets import MNIST
 from fuel.schemes import ShuffledScheme
 from fuel.streams import DataStream
-from intent.lenet import LeNet, create_lenet_5
-from intent.attrib import AttributedGradientDescent
+from intent.lenet import LeNet, create_lenet_5, create_sorted_lenet
+from intent.attrib import AttributionExtension
 from intent.attrib import ComponentwiseCrossEntropy
 from intent.attrib import print_attributions
 from intent.attrib import save_attributions
 from intent.ablation import ConfusionMatrix
 from intent.ablation import Sum
+from intent.sparse import SparseGradientDescent, fc_mask
 
 # For testing
 
@@ -44,7 +45,7 @@ def main(save_to, num_epochs,
          num_batches=None, resume=False):
     batch_size = 500
     output_size = 10
-    convnet = create_lenet_5()
+    convnet = create_sorted_lenet()
     layers = convnet.layers
 
     mnist_test = MNIST(("test",), sources=['features', 'targets'])
@@ -68,7 +69,7 @@ def main(save_to, num_epochs,
 
     # Apply regularization to the cost
     weights = VariableFilter(roles=[WEIGHT])(cg.variables)
-    cost = cost + sum([0.0003 * (W ** 2).sum() for W in weights])
+    cost = cost + sum([0.0005 * (W ** 2).sum() for W in weights])
     cost.name = 'cost_with_regularization'
 
     mnist_train = MNIST(("train",))
@@ -83,15 +84,22 @@ def main(save_to, num_epochs,
             mnist_test.num_examples, batch_size))
 
     # Train with simple SGD
-    algorithm = AttributedGradientDescent(
-        cost=cost, parameters=cg.parameters, components=components,
-        components_size=output_size,
+    algorithm = SparseGradientDescent(
+        mask={ weights[0]: fc_mask(output_size) },
+        cost=cost, parameters=cg.parameters,
         step_rule=AdaDelta())
+
+    attribution = AttributionExtension(
+        components=components,
+        parameters=cg.parameters,
+        components_size=output_size,
+        after_batch=True)
 
     # `Timing` extension reports time for reading data, aggregating a batch
     # and monitoring;
     # `ProgressBar` displays a nice progress bar during training.
-    extensions = [Timing(),
+    extensions = [attribution,
+                  Timing(),
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
                   DataStreamMonitoring(
@@ -120,7 +128,7 @@ def main(save_to, num_epochs,
 
     main_loop.run()
 
-    save_attributions(algorithm)
+    save_attributions(attribution)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

@@ -9,6 +9,7 @@ from blocks.algorithms import GradientDescent
 from blocks.bricks import application
 from blocks.bricks import Linear
 from blocks.bricks.base import Brick
+from blocks.extensions import SimpleExtension
 from blocks.roles import PersistentRole
 from blocks.roles import add_role
 from blocks.utils import shared_floatx_zeros
@@ -91,6 +92,41 @@ class AttributedGradientDescent(GradientDescent):
         jacobian_map = OrderedDict(equizip(self.parameters, jacobians))
         logging.info("The component jacobian computation graph is built")
         return jacobian_map
+
+def _compute_jacobians(components, parameters):
+    logging.info("Taking the component jacobians")
+    jacobians = gradient.jacobian(components, parameters)
+    jacobian_map = OrderedDict(equizip(parameters, jacobians))
+    logging.info("The component jacobian computation graph is built")
+    return jacobian_map
+
+class AttributionExtension(SimpleExtension):
+    def __init__(self, components=None, components_size=None,
+                 parameters=None, **kwargs):
+        kwargs.setdefault("before_training", True)
+        self.components = components
+        self.components_size = components_size
+        self.parameters = parameters
+        self.jacobians = _compute_jacobians(components, parameters)
+        self.attributions = OrderedDict(
+            [(param, _create_attribution_histogram_for(param, components_size))
+                for param in self.parameters])
+        self.influences = OrderedDict(
+            [(param, _create_attribution_histogram_for(param, components_size))
+                for param in self.parameters])
+        self.attribution_updates = OrderedDict(
+            [_create_attribution_updates(self.attributions[param],
+                self.jacobians[param]) for param in self.parameters])
+        self.influence_updates = OrderedDict(
+            [_create_influence_updates(self.influences[param],
+                self.jacobians[param]) for param in self.parameters])
+        super(AttributionExtension, self).__init__(**kwargs)
+
+    def do(self, callback_name, *args):
+        self.parse_args(callback_name, args)
+        if callback_name == 'before_training':
+            self.main_loop.algorithm.add_updates(self.attribution_updates)
+            self.main_loop.algorithm.add_updates(self.influence_updates)
 
 def save_attributions(algorithm, filename=None):
     if filename is None:
