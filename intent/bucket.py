@@ -48,6 +48,7 @@ from intent.ablation import ablate_inputs
 from intent.lenet import create_lenet_5
 from intent.maxact import MaximumActivationSearch
 from intent.filmstrip import Filmstrip
+from intent.scatter import Scatter
 from intent.rf import make_mask
 from intent.rf import layerarray_fieldmap
 from prior import create_fair_basis
@@ -275,6 +276,9 @@ class QueryRequestHandler(BaseHTTPRequestHandler):
         if url.path == '/units':
             self.units(url, fields)
             return
+        if url.path == '/scatter':
+            self.scatter(url, fields)
+            return
 
         # Send response status code
         self.send_response(200)
@@ -387,6 +391,23 @@ class QueryRequestHandler(BaseHTTPRequestHandler):
         self.send_header('Content-type', 'image/png')
         self.end_headers()
         self.wfile.write(result)
+
+    def scatter(self, url, fields):
+        units = []
+        if 'units' in fields:
+            units = [int(u) for u in fields['units'].split(',')]
+        size = [1024, 1024]
+        if 'size' in fields:
+            size = [int(u) for u in fields['size'].split(',')]
+        scatter = Scatter(shape=size, unit_shape=(28, 28))
+        scatter.plot_scatter(
+                corpus=self.server.tester.mnist_test,
+                locations=self.server.tester.table[:, units])
+        self.send_response(200)
+        self.send_header('Content-type', 'image/png')
+        self.end_headers()
+        self.wfile.write(scatter.save_bytes())
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
