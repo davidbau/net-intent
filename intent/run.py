@@ -31,7 +31,8 @@ from fuel.datasets import MNIST
 from fuel.schemes import ShuffledScheme
 from fuel.streams import DataStream
 from intent.lenet import LeNet, create_lenet_5
-from intent.attrib import AttributionExtension
+from intent.noisy import NoisyLeNet, create_noisy_lenet_5, NITS
+# from intent.attrib import AttributionExtension
 from intent.attrib import ComponentwiseCrossEntropy
 from intent.attrib import print_attributions
 from intent.attrib import save_attributions
@@ -44,7 +45,7 @@ def main(save_to, num_epochs,
          num_batches=None, resume=False):
     batch_size = 500
     output_size = 10
-    convnet = create_lenet_5()
+    convnet = create_noisy_lenet_5()
     layers = convnet.layers
 
     mnist_test = MNIST(("test",), sources=['features', 'targets'])
@@ -65,10 +66,14 @@ def main(save_to, num_epochs,
     confusion.tag.aggregation_scheme = Sum(confusion)
 
     cg = ComputationGraph([cost, error_rate, components])
+    print(cg.auxiliary_variables)
+    nits = VariableFilter(roles=[NITS])(cg.auxiliary_variables)
+    # import pdb; pdb.set_trace()
 
     # Apply regularization to the cost
-    weights = VariableFilter(roles=[WEIGHT])(cg.variables)
-    cost = cost + sum([0.0003 * (W ** 2).sum() for W in weights])
+    # weights = VariableFilter(roles=[WEIGHT])(cg.variables)
+    # cost = cost + sum([0.0003 * (W ** 2).sum() for W in weights])
+    cost = cost + 0.02 * sum([n.mean() for n in nits])
     cost.name = 'cost_with_regularization'
 
     mnist_train = MNIST(("train",))
@@ -87,16 +92,16 @@ def main(save_to, num_epochs,
         cost=cost, parameters=cg.parameters,
         step_rule=AdaDelta())
 
-    attribution = AttributionExtension(
-        components=components,
-        parameters=cg.parameters,
-        components_size=output_size,
-        after_batch=True)
+    # attribution = AttributionExtension(
+    #     components=components,
+    #     parameters=cg.parameters,
+    #     components_size=output_size,
+    #     after_batch=True)
 
     # `Timing` extension reports time for reading data, aggregating a batch
     # and monitoring;
     # `ProgressBar` displays a nice progress bar during training.
-    extensions = [attribution,
+    extensions = [
                   Timing(),
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
@@ -126,7 +131,7 @@ def main(save_to, num_epochs,
 
     main_loop.run()
 
-    save_attributions(attribution)
+    # save_attributions(attribution)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
