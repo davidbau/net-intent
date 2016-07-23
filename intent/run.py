@@ -32,7 +32,7 @@ from fuel.schemes import ShuffledScheme
 from fuel.streams import DataStream
 from intent.lenet import LeNet, create_lenet_5
 from intent.noisy import NoisyLeNet, create_noisy_lenet_5, NITS
-# from intent.attrib import AttributionExtension
+from intent.attrib import AttributionExtension
 from intent.attrib import ComponentwiseCrossEntropy
 from intent.attrib import print_attributions
 from intent.attrib import save_attributions
@@ -92,16 +92,16 @@ def main(save_to, num_epochs,
         cost=cost, parameters=cg.parameters,
         step_rule=AdaDelta())
 
-    # attribution = AttributionExtension(
-    #     components=components,
-    #     parameters=cg.parameters,
-    #     components_size=output_size,
-    #     after_batch=True)
+    attribution = AttributionExtension(
+        components=components,
+        parameters=cg.parameters,
+        components_size=output_size,
+        after_batch=True)
 
     # `Timing` extension reports time for reading data, aggregating a batch
     # and monitoring;
     # `ProgressBar` displays a nice progress bar during training.
-    extensions = [
+    extensions = [attribution,
                   Timing(),
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
@@ -131,7 +131,7 @@ def main(save_to, num_epochs,
 
     main_loop.run()
 
-    # save_attributions(attribution)
+    save_attributions(attribution)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

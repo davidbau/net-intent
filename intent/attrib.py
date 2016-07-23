@@ -93,9 +93,10 @@ class AttributedGradientDescent(GradientDescent):
         logging.info("The component jacobian computation graph is built")
         return jacobian_map
 
-def _compute_jacobians(components, parameters):
+def _compute_jacobians(components, num, parameters):
     logging.info("Taking the component jacobians")
-    jacobians = gradient.jacobian(components, parameters)
+    gradients = [tensor.grad(components[i], parameters) for i in range(num)]
+    jacobians = [tensor.stack(g) for g in zip(*gradients)]
     jacobian_map = OrderedDict(equizip(parameters, jacobians))
     logging.info("The component jacobian computation graph is built")
     return jacobian_map
@@ -107,7 +108,8 @@ class AttributionExtension(SimpleExtension):
         self.components = components
         self.components_size = components_size
         self.parameters = parameters
-        self.jacobians = _compute_jacobians(components, parameters)
+        self.jacobians = _compute_jacobians(
+                components, components_size, parameters)
         self.attributions = OrderedDict(
             [(param, _create_attribution_histogram_for(param, components_size))
                 for param in self.parameters])
