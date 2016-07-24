@@ -97,6 +97,9 @@ class SynpicExtension(SimpleExtension):
             raise ValueError("can't infer jacobians; no synpic_parameters")
         logging.info("Taking the synpic jacobians")
         jacobians = gradient.jacobian(self.case_costs, self.synpic_parameters)
+        # gradients = [tensor.grad(self.case_costs[j], self.synpic_parameters)
+        #             for j in range(self.batch_size)]
+        # jacobians = [tensor.stack(g) for g in zip(*gradients)]
         jacobian_map = OrderedDict(equizip(self.synpic_parameters, jacobians))
         logging.info("The synpic jacobian computation graph is built")
         return jacobian_map

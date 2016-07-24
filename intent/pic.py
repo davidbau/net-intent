@@ -6,6 +6,9 @@ python run.py --num-epochs 20
 ```
 
 """
+import sys
+sys.setrecursionlimit(50000)
+
 import logging
 from argparse import ArgumentParser
 
@@ -30,7 +33,10 @@ from blocks.serialization import load
 from fuel.datasets import MNIST
 from fuel.schemes import ShuffledScheme
 from fuel.streams import DataStream
-from intent.lenet import LeNet, create_lenet_5
+from intent.ablation import ConfusionMatrix
+from intent.ablation import Sum
+# from intent.lenet import LeNet, create_lenet_5
+from intent.noisy import create_noisy_lenet_5, NITS
 from intent.synpic import SynpicExtension
 from intent.synpic import CasewiseCrossEntropy
 from collections import OrderedDict
@@ -178,10 +184,10 @@ def main(save_to, num_epochs, resume=False, **kwargs):
     main_loop.synpic.save_images()
 
 def create_main_loop(save_to, num_epochs, unit_order=None,
-        batch_size=500, num_batches=None):
+        batch_size=50, num_batches=None):
     image_size = (28, 28)
     output_size = 10
-    convnet = create_lenet_5()
+    convnet = create_noisy_lenet_5()
     x = tensor.tensor4('features')
     y = tensor.lmatrix('targets')
 
@@ -192,11 +198,18 @@ def create_main_loop(save_to, num_epochs, unit_order=None,
     error_rate = (MisclassificationRate().apply(y.flatten(), probs)
                   .copy(name='error_rate'))
 
+    # Monitor confusion matrices
+    confusion = (ConfusionMatrix().apply(y.flatten(), probs)
+                  .copy(name='confusion'))
+    confusion.tag.aggregation_scheme = Sum(confusion)
+
     cg = ComputationGraph([cost, error_rate, case_costs])
 
     # Apply regularization to the cost
-    weights = VariableFilter(roles=[WEIGHT])(cg.variables)
-    cost = cost + sum([0.0003 * (W ** 2).sum() for W in weights])
+    # weights = VariableFilter(roles=[WEIGHT])(cg.variables)
+    # cost = cost + sum([0.0003 * (W ** 2).sum() for W in weights])
+    nits = VariableFilter(roles=[NITS])(cg.auxiliary_variables)
+    cost = cost + 0.02 * sum([n.mean() for n in nits])
     cost.name = 'cost_with_regularization'
 
     mnist_train = MNIST(("train",))
@@ -253,7 +266,7 @@ def create_main_loop(save_to, num_epochs, unit_order=None,
                       unit_order=unit_order,
                       after_batch=True),
                   DataStreamMonitoring(
-                      [cost, error_rate],
+                      [cost, error_rate, confusion],
                       mnist_test_stream,
                       prefix="test"),
                   TrainingDataMonitoring(

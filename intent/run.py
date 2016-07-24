@@ -26,12 +26,13 @@ from blocks.initialization import Constant, Uniform
 from blocks.main_loop import MainLoop
 from blocks.model import Model
 from blocks.monitoring import aggregation
-from blocks.roles import WEIGHT
+from blocks.roles import WEIGHT, BIAS
 from fuel.datasets import MNIST
 from fuel.schemes import ShuffledScheme
 from fuel.streams import DataStream
 from intent.lenet import LeNet, create_lenet_5
-from intent.noisy import NoisyLeNet, create_noisy_lenet_5, NITS
+from intent.noisy import NoisyLeNet, create_noisy_lenet_5
+from intent.noisy import NITS, NOISE, NoiseExtension
 from intent.attrib import AttributionExtension
 from intent.attrib import ComponentwiseCrossEntropy
 from intent.attrib import print_attributions
@@ -45,7 +46,7 @@ def main(save_to, num_epochs,
          num_batches=None, resume=False):
     batch_size = 500
     output_size = 10
-    convnet = create_noisy_lenet_5()
+    convnet = create_noisy_lenet_5(batch_size)
     layers = convnet.layers
 
     mnist_test = MNIST(("test",), sources=['features', 'targets'])
@@ -66,9 +67,7 @@ def main(save_to, num_epochs,
     confusion.tag.aggregation_scheme = Sum(confusion)
 
     cg = ComputationGraph([cost, error_rate, components])
-    print(cg.auxiliary_variables)
     nits = VariableFilter(roles=[NITS])(cg.auxiliary_variables)
-    # import pdb; pdb.set_trace()
 
     # Apply regularization to the cost
     # weights = VariableFilter(roles=[WEIGHT])(cg.variables)
@@ -87,21 +86,30 @@ def main(save_to, num_epochs,
         iteration_scheme=ShuffledScheme(
             mnist_test.num_examples, batch_size))
 
+    trainable_parameters = VariableFilter(roles=[WEIGHT, BIAS])(cg.parameters)
+    noise_parameters = VariableFilter(roles=[NOISE])(cg.parameters)
+    print(cg.parameters, trainable_parameters, noise_parameters)
+
     # Train with simple SGD
     algorithm = GradientDescent(
-        cost=cost, parameters=cg.parameters,
+        cost=cost,
+        parameters=trainable_parameters,
         step_rule=AdaDelta())
 
-    attribution = AttributionExtension(
-        components=components,
-        parameters=cg.parameters,
-        components_size=output_size,
-        after_batch=True)
+#    attribution = AttributionExtension(
+#        components=components,
+#        parameters=trainable_parameters,
+#        components_size=output_size,
+#        after_batch=True)
+
+    add_noise = NoiseExtension(
+        parameters=noise_parameters)
 
     # `Timing` extension reports time for reading data, aggregating a batch
     # and monitoring;
     # `ProgressBar` displays a nice progress bar during training.
-    extensions = [attribution,
+    extensions = [#attribution,
+                  add_noise,
                   Timing(),
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
@@ -113,7 +121,7 @@ def main(save_to, num_epochs,
                       [cost, error_rate,
                        aggregation.mean(algorithm.total_gradient_norm)],
                       prefix="train",
-                      after_epoch=True),
+                      after_batch=True),
                   Checkpoint(save_to),
                   ProgressBar(),
                   Printing()]
