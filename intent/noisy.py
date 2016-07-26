@@ -1,5 +1,6 @@
 """Noisy network elements.
 """
+import logging
 import numpy as np
 import theano
 from theano import tensor
@@ -19,12 +20,16 @@ from blocks.bricks.conv import Convolutional, ConvolutionalSequence
 from blocks.bricks.conv import Flattener, MaxPooling
 from blocks.bricks.interfaces import RNGMixin
 from blocks.extensions import SimpleExtension
+from blocks.extensions.monitoring import DataStreamMonitoring
 from blocks.initialization import Constant, Uniform, IsotropicGaussian
+from blocks.monitoring.evaluators import DatasetEvaluator
 from blocks.roles import add_role, AuxiliaryRole, ParameterRole
 from blocks.utils import shared_floatx_zeros
 from collections import OrderedDict
 from toolz.itertoolz import interleave
 
+
+logger = logging.getLogger(__name__)
 
 class NoiseRole(ParameterRole):
     pass
@@ -62,15 +67,15 @@ class UnitNoiseGenerator(Random):
         return self.theano_rng.normal(param.shape, std=self.std)
 
 class NoiseExtension(SimpleExtension, RNGMixin):
-    def __init__(self, parameters=None, **kwargs):
-        kwargs.setdefault("before_training", True)
-        self.parameters = parameters
+    def __init__(self, noise_parameters=None, **kwargs):
+        kwargs.setdefault("before_batch", True)
+        self.noise_parameters = noise_parameters
         std = 1.0
-        self.theano_generator = UnitNoiseGenerator(std=std)
         self.noise_init = IsotropicGaussian(std=std)
+        self.theano_generator = UnitNoiseGenerator(std=std)
         self.noise_updates = OrderedDict(
             [(param, self.theano_generator.apply(param))
-                for param in self.parameters])
+                for param in self.noise_parameters])
         super(NoiseExtension, self).__init__(**kwargs)
 
     def do(self, callback_name, *args):
@@ -132,7 +137,8 @@ class NoisyLinear(Initializable, Feedforward, Random):
             The transformed input
         """
         pre_noise = self.linear.apply(input_)
-        noise_level = self.mask.apply(input_)
+        noise_level = tensor.clip(self.mask.apply(input_), -16, 16)
+
         # Allow incomplete batches by just taking the noise that is needed
         # noise = Print('noise')(self.parameters[0][:noise_level.shape[0], :])
         noise = self.parameters[0][:noise_level.shape[0], :]
@@ -222,7 +228,8 @@ class NoisyConvolutional(Initializable, Feedforward, Random):
             The transformed input
         """
         pre_noise = self.convolution.apply(input_)
-        noise_level = self.mask.apply(input_)
+        # noise_level = self.mask.apply(input_)
+        noise_level = tensor.clip(self.mask.apply(input_), -16, 16)
         # Allow incomplete batches by just taking the noise that is needed
         noise = self.parameters[0][:noise_level.shape[0], :, :, :]
         # noise = self.theano_rng.normal(noise_level.shape)
@@ -249,6 +256,28 @@ class NoisyConvolutional(Initializable, Feedforward, Random):
     @property
     def num_output_channels(self):
         return self.num_filters
+
+
+class NoisyDataStreamMonitoring(DataStreamMonitoring):
+    def __init__(self, variables, data_stream,
+            updates=None, noise_parameters=None, **kwargs):
+        kwargs.setdefault("after_epoch", True)
+        kwargs.setdefault("before_first_epoch", True)
+        super(DataStreamMonitoring, self).__init__(**kwargs)
+        self._evaluator = DatasetEvaluator(variables, updates)
+        self.data_stream = data_stream
+        self.noise_parameters = noise_parameters
+
+    def do(self, callback_name, *args):
+        """Write the values of monitored variables to the log."""
+        logger.info("Monitoring on auxiliary data started")
+        saved = [(p, p.get_value()) for p in self.noise_parameters]
+        for (p, v) in saved:
+            p.set_value(np.zeros(v.shape, dtype=v.dtype))
+        value_dict = self._evaluator.evaluate(self.data_stream)
+        self.add_records(self.main_loop.log, value_dict.items())
+        logger.info("Monitoring on auxiliary data finished")
+
 
 class NoisyLeNet(FeedforwardSequence, Initializable):
     """LeNet-like convolutional network.
@@ -391,16 +420,27 @@ def create_noisy_lenet_5(batch_size):
     convnet.top_mlp.linear_transformations[2].linear.weights_init = (
             Uniform(width=.2))
 
-    convnet.layers[0].mask.bias_init = (
-            Constant(-3))
-    convnet.layers[3].mask.bias_init = (
-            Constant(-3))
-    convnet.top_mlp.linear_transformations[0].mask.bias_init = (
-            Constant(-3))
-    convnet.top_mlp.linear_transformations[1].mask.bias_init = (
-            Constant(-3))
-    convnet.top_mlp.linear_transformations[2].mask.bias_init = (
-            Constant(-3))
+    convnet.layers[0].mask.weights_init = (
+            Uniform(width=.2))
+    convnet.layers[3].mask.weights_init = (
+            Uniform(width=.09))
+    convnet.top_mlp.linear_transformations[0].mask.weights_init = (
+            Uniform(width=.08))
+    convnet.top_mlp.linear_transformations[1].mask.weights_init = (
+            Uniform(width=.11))
+    convnet.top_mlp.linear_transformations[2].mask.weights_init = (
+            Uniform(width=.2))
+
+#    convnet.layers[0].mask.bias_init = (
+#            Constant(-3))
+#    convnet.layers[3].mask.bias_init = (
+#            Constant(-3))
+#    convnet.top_mlp.linear_transformations[0].mask.bias_init = (
+#            Constant(-3))
+#    convnet.top_mlp.linear_transformations[1].mask.bias_init = (
+#            Constant(-3))
+#    convnet.top_mlp.linear_transformations[2].mask.bias_init = (
+#            Constant(-3))
 
     convnet.initialize()
 

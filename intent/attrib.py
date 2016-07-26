@@ -10,12 +10,16 @@ from blocks.bricks import application
 from blocks.bricks import Linear
 from blocks.bricks.base import Brick
 from blocks.extensions import SimpleExtension
+from blocks.filter import get_brick
 from blocks.roles import PersistentRole
 from blocks.roles import add_role
 from blocks.utils import shared_floatx_zeros
 from picklable_itertools.extras import equizip
 import numpy
 import pickle
+
+def full_brick_name(brick):
+     return '/'.join([''] + [b.name for b in brick.get_unique_path()])
 
 class ComponentwiseCrossEntropy(Brick):
     """By-component cross entropy.
@@ -137,7 +141,7 @@ def save_attributions(algorithm, filename=None):
     data = {}
     for param, hist in algorithm.attributions.items():
         paramname = hist.tag.for_parameter.name
-        layername = hist.tag.for_parameter.tag.annotations[0].name
+        layername = full_brick_name(get_brick(hist.tag.for_parameter))
         data[(layername, paramname)] = hist.get_value()
     with open(filename, 'wb') as handle:
         pickle.dump(data, handle)
@@ -179,7 +183,8 @@ def print_attributions(algorithm):
                 for j in range(svals.shape[1]):
                     print('Sorted hist for layer %s %s %s %d %f' % (
                         hist[pindex].tag.for_parameter.name,
-                        hist[pindex].tag.for_parameter.tag.annotations[0].name,
+                        full_brick_name(get_brick(
+                            hist[pindex].tag.for_parameter)),
                         name,
                         j, pvals[nindex, j]))
                     limit = max(abs(svals[:,j]))
@@ -193,7 +198,7 @@ def print_attributions(algorithm):
 
             print('Attribution for parameter %s for layer %s %s' % (
                 hist[pindex].tag.for_parameter.name,
-                hist[pindex].tag.for_parameter.tag.annotations[0].name,
+                full_brick_name(get_brick(hist[pindex].tag.for_parameter)),
                 name))
             bounds = sorted(zip(
                 vals.argmin(axis=0).flatten(),

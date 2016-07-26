@@ -17,7 +17,6 @@ from blocks.bricks import Activation
 from blocks.bricks import Softmax
 from blocks.bricks.cost import CategoricalCrossEntropy, MisclassificationRate
 from blocks.extensions import FinishAfter, Timing, Printing, ProgressBar
-from blocks.extensions.monitoring import DataStreamMonitoring
 from blocks.extensions.monitoring import TrainingDataMonitoring
 from blocks.extensions.saveload import Checkpoint, Load
 from blocks.filter import VariableFilter
@@ -33,6 +32,7 @@ from fuel.streams import DataStream
 from intent.lenet import LeNet, create_lenet_5
 from intent.noisy import NoisyLeNet, create_noisy_lenet_5
 from intent.noisy import NITS, NOISE, NoiseExtension
+from intent.noisy import NoisyDataStreamMonitoring
 from intent.attrib import AttributionExtension
 from intent.attrib import ComponentwiseCrossEntropy
 from intent.attrib import print_attributions
@@ -72,7 +72,8 @@ def main(save_to, num_epochs,
     # Apply regularization to the cost
     # weights = VariableFilter(roles=[WEIGHT])(cg.variables)
     # cost = cost + sum([0.0003 * (W ** 2).sum() for W in weights])
-    cost = cost + 0.02 * sum([n.mean() for n in nits])
+    cost = cost + sum([n.mean() for n in nits])
+    # cost = cost + sum([n.sum() / n.shape[0] for n in nits])
     cost.name = 'cost_with_regularization'
 
     mnist_train = MNIST(("train",))
@@ -91,31 +92,36 @@ def main(save_to, num_epochs,
     print(cg.parameters, trainable_parameters, noise_parameters)
 
     # Train with simple SGD
+    # from theano.compile.nanguardmode import NanGuardMode
+
     algorithm = GradientDescent(
         cost=cost,
         parameters=trainable_parameters,
         step_rule=AdaDelta())
+    #    theano_func_kwargs={'mode': NanGuardMode(
+    #        nan_is_error=True, inf_is_error=False, big_is_error=False)})
 
-#    attribution = AttributionExtension(
-#        components=components,
-#        parameters=trainable_parameters,
-#        components_size=output_size,
-#        after_batch=True)
+    attribution = AttributionExtension(
+        components=components,
+        parameters=trainable_parameters,
+        components_size=output_size,
+        after_batch=True)
 
     add_noise = NoiseExtension(
-        parameters=noise_parameters)
+        noise_parameters=noise_parameters)
 
     # `Timing` extension reports time for reading data, aggregating a batch
     # and monitoring;
     # `ProgressBar` displays a nice progress bar during training.
-    extensions = [#attribution,
+    extensions = [attribution,
                   add_noise,
                   Timing(),
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
-                  DataStreamMonitoring(
+                  NoisyDataStreamMonitoring(
                       [cost, error_rate, confusion],
                       mnist_test_stream,
+                      noise_parameters=noise_parameters,
                       prefix="test"),
                   TrainingDataMonitoring(
                       [cost, error_rate,

@@ -19,7 +19,6 @@ from blocks.bricks import Activation
 from blocks.bricks.cost import CategoricalCrossEntropy, MisclassificationRate
 from blocks.extensions import FinishAfter, Timing, Printing, ProgressBar
 from blocks.extensions import SimpleExtension
-from blocks.extensions.monitoring import DataStreamMonitoring
 from blocks.extensions.monitoring import TrainingDataMonitoring
 from blocks.extensions.saveload import Checkpoint, Load
 from blocks.filter import VariableFilter
@@ -37,6 +36,8 @@ from intent.ablation import ConfusionMatrix
 from intent.ablation import Sum
 # from intent.lenet import LeNet, create_lenet_5
 from intent.noisy import create_noisy_lenet_5, NITS
+from intent.noisy import NITS, NOISE, NoiseExtension
+from intent.noisy import NoisyDataStreamMonitoring
 from intent.synpic import SynpicExtension
 from intent.synpic import CasewiseCrossEntropy
 from collections import OrderedDict
@@ -187,7 +188,7 @@ def create_main_loop(save_to, num_epochs, unit_order=None,
         batch_size=50, num_batches=None):
     image_size = (28, 28)
     output_size = 10
-    convnet = create_noisy_lenet_5()
+    convnet = create_noisy_lenet_5(batch_size)
     x = tensor.tensor4('features')
     y = tensor.lmatrix('targets')
 
@@ -209,7 +210,8 @@ def create_main_loop(save_to, num_epochs, unit_order=None,
     # weights = VariableFilter(roles=[WEIGHT])(cg.variables)
     # cost = cost + sum([0.0003 * (W ** 2).sum() for W in weights])
     nits = VariableFilter(roles=[NITS])(cg.auxiliary_variables)
-    cost = cost + 0.02 * sum([n.mean() for n in nits])
+    cost = cost + sum([n.mean() for n in nits])
+    # cost = cost + sum([n.sum() / n.shape[0] for n in nits])
     cost.name = 'cost_with_regularization'
 
     mnist_train = MNIST(("train",))
@@ -225,6 +227,7 @@ def create_main_loop(save_to, num_epochs, unit_order=None,
 
     # Generate pics for biases
     biases = VariableFilter(roles=[BIAS])(cg.parameters)
+    noise_parameters = VariableFilter(roles=[NOISE])(cg.parameters)
 
     # Train with simple SGD
     algorithm = GradientDescent(
@@ -242,6 +245,8 @@ def create_main_loop(save_to, num_epochs, unit_order=None,
         label_count=output_size,
         after_batch=True)
 
+    noise_extension = NoiseExtension(
+        noise_parameters=noise_parameters)
 
     # Impose an orderint for the SaveImages extension
     if unit_order is not None:
@@ -252,7 +257,8 @@ def create_main_loop(save_to, num_epochs, unit_order=None,
     # `Timing` extension reports time for reading data, aggregating a batch
     # and monitoring;
     # `ProgressBar` displays a nice progress bar during training.
-    extensions = [Timing(),
+    extensions = [noise_extension,
+                  Timing(),
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
                   synpic_extension,
@@ -265,9 +271,10 @@ def create_main_loop(save_to, num_epochs, unit_order=None,
                       graph_len=500,
                       unit_order=unit_order,
                       after_batch=True),
-                  DataStreamMonitoring(
+                  NoisyDataStreamMonitoring(
                       [cost, error_rate, confusion],
                       mnist_test_stream,
+                      noise_parameters=noise_parameters,
                       prefix="test"),
                   TrainingDataMonitoring(
                       [cost, error_rate,

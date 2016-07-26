@@ -9,6 +9,7 @@ from blocks.bricks import application
 from blocks.bricks import Linear
 from blocks.bricks.base import Brick
 from blocks.extensions import SimpleExtension
+from blocks.filter import get_brick
 from blocks.roles import PersistentRole
 from blocks.roles import add_role
 from blocks.utils import shared_floatx_zeros
@@ -16,6 +17,9 @@ from filmstrip import Filmstrip
 from filmstrip import plan_grid
 from picklable_itertools.extras import equizip
 import numpy
+
+def full_brick_name(brick):
+     return '/'.join([''] + [b.name for b in brick.get_unique_path()])
 
 class CasewiseCrossEntropy(Brick):
     """By-case cross entropy.
@@ -108,7 +112,7 @@ class SynpicExtension(SimpleExtension):
         if pattern is None:
             pattern = '%s_%s_synpic.jpg'
         for param, synpic in self.synpics.items():
-            layername = param.tag.annotations[0].name
+            layername = full_brick_name(get_brick(param))
             paramname = param.name
             allpics = synpic.get_value()
             if len(allpics.shape) == 7:
@@ -139,12 +143,13 @@ class SynpicExtension(SimpleExtension):
                         filmstrip.set_image((row, label + 1 +
                                 col * unit_width + subunit * self.label_count),
                                 im[label, :, :])
-            filmstrip.save(pattern % (layername, paramname))
+            filmstrip.save(pattern % (
+                layername.replace('/', '_'), paramname))
 
     def get_picdata(self):
         result = OrderedDict()
         for param, synpic in self.synpics.items():
-            layername = param.tag.annotations[0].name
+            layername = full_brick_name(get_brick(param))
             result[layername] = synpic.get_value()
         return result
 
