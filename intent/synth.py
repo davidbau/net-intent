@@ -133,8 +133,9 @@ def main(save_to):
             costvec = -tensor.log(tensor.nnet.softmax(
                 maxout)[:,unit].flatten())
         # Add a regularization to favor gray images.
-        cost = costvec.sum() + (x - 0.5).norm(2) * (
-                10.0 / basis_init.shape[0])
+        # cost = costvec.sum() + (x - 0.5).norm(2) * (
+        #         10.0 / basis_init.shape[0])
+        cost = costvec.sum()
         grad = gradient.grad(cost, x)
         stepx = x - learning_rate * grad
         normx = stepx / tensor.shape_padright(
