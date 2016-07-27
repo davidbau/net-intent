@@ -42,8 +42,8 @@ from intent.ablation import Sum
 
 # For testing
 
-def main(save_to, num_epochs,
-         num_batches=None, resume=False):
+def main(save_to, num_epochs, regularization=1.0,
+         num_batches=None, resume=False, histogram=None):
     batch_size = 500
     output_size = 10
     convnet = create_noisy_lenet_5(batch_size)
@@ -75,8 +75,7 @@ def main(save_to, num_epochs,
     # cost = cost + sum([n.mean() for n in nits])
     nit_rate = tensor.concatenate([n.flatten() for n in nits]).mean()
     nit_rate.name = 'nit_rate'
-    # cost = cost + sum([n.sum() / n.shape[0] for n in nits])
-    cost = cost + nit_rate
+    cost = cost + regularization * nit_rate
     cost.name = 'cost_with_regularization'
 
     mnist_train = MNIST(("train",))
@@ -115,8 +114,7 @@ def main(save_to, num_epochs,
     # `Timing` extension reports time for reading data, aggregating a batch
     # and monitoring;
     # `ProgressBar` displays a nice progress bar during training.
-    extensions = [attribution,
-                  add_noise,
+    extensions = [add_noise,
                   Timing(),
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
@@ -134,6 +132,14 @@ def main(save_to, num_epochs,
                   ProgressBar(),
                   Printing()]
 
+    if histogram:
+        attribution = AttributionExtension(
+            components=components,
+            parameters=trainable_parameters,
+            components_size=output_size,
+            after_batch=True)
+        extensions.insert(0, attribution)
+
     if resume:
         extensions.append(Load(save_to, True, True))
 
@@ -147,17 +153,21 @@ def main(save_to, num_epochs,
 
     main_loop.run()
 
-    save_attributions(attribution)
+    if histogram:
+        save_attributions(attribution, filename=histogram)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     parser = ArgumentParser("An example of training a convolutional network "
                             "on the MNIST dataset.")
+    parser.add_argument("--histogram", help="histogram file")
     parser.add_argument("--num-epochs", type=int, default=5,
                         help="Number of training epochs to do.")
     parser.add_argument("save_to", default="noisy-mnist.tar", nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
+    parser.add_argument('--regularization', type=float, default=1.0,
+                        help="Regularization parameter, default 1.0.")
     parser.add_argument('--resume', dest='resume', action='store_true')
     parser.add_argument('--no-resume', dest='resume', action='store_false')
     parser.set_defaults(resume=False)

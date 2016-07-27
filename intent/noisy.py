@@ -116,7 +116,7 @@ class NoisyLinear(Initializable, Feedforward, Random):
     def _push_allocation_config(self):
         self.linear.input_dim = self.input_dim
         self.linear.output_dim = self.output_dim
-        self.mask.input_dim = self.input_dim
+        self.mask.input_dim = self.output_dim
         self.mask.output_dim = self.output_dim
 
     def _allocate(self):
@@ -137,7 +137,7 @@ class NoisyLinear(Initializable, Feedforward, Random):
             The transformed input
         """
         pre_noise = self.linear.apply(input_)
-        noise_level = -tensor.clip(self.mask.apply(input_), -16, 16)
+        noise_level = -tensor.clip(self.mask.apply(pre_noise), -16, 16)
 
         # Allow incomplete batches by just taking the noise that is needed
         # noise = Print('noise')(self.parameters[0][:noise_level.shape[0], :])
@@ -200,13 +200,13 @@ class NoisyConvolutional(Initializable, Feedforward, Random):
         self.convolution.step = self.step
         self.convolution.border_mode = self.border_mode
         self.convolution.tied_biases = self.tied_biases
-        self.mask.filter_size = self.filter_size
+        self.mask.filter_size = (1, 1)
         self.mask.num_filters = self.num_filters
-        self.mask.num_channels = self.num_channels
+        self.mask.num_channels = self.num_filters
         # self.mask.batch_size = self.batch_size
-        self.mask.image_size = self.image_size
-        self.mask.step = self.step
-        self.mask.border_mode = self.border_mode
+        self.mask.image_size = self.convolution.get_dim('output')[1:]
+        # self.mask.step = self.step
+        # self.mask.border_mode = self.border_mode
         self.mask.tied_biases = self.tied_biases
 
     def _allocate(self):
@@ -229,7 +229,7 @@ class NoisyConvolutional(Initializable, Feedforward, Random):
         """
         pre_noise = self.convolution.apply(input_)
         # noise_level = self.mask.apply(input_)
-        noise_level = tensor.clip(self.mask.apply(input_), -16, 16)
+        noise_level = tensor.clip(self.mask.apply(pre_noise), -16, 16)
         # Allow incomplete batches by just taking the noise that is needed
         noise = self.parameters[0][:noise_level.shape[0], :, :, :]
         # noise = self.theano_rng.normal(noise_level.shape)
