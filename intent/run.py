@@ -155,7 +155,7 @@ if __name__ == "__main__":
                             "on the MNIST dataset.")
     parser.add_argument("--num-epochs", type=int, default=5,
                         help="Number of training epochs to do.")
-    parser.add_argument("save_to", default="mnist.tar", nargs="?",
+    parser.add_argument("save_to", default="noisy-mnist.tar", nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
     parser.add_argument('--resume', dest='resume', action='store_true')

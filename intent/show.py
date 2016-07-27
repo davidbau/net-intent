@@ -152,7 +152,7 @@ def main(save_to):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     parser = ArgumentParser("Gradient descent vis for the MNIST dataset.")
-    parser.add_argument("save_to", default="mnist.tar", nargs="?",
+    parser.add_argument("save_to", default="noisy-mnist.tar", nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
     args = parser.parse_args()
