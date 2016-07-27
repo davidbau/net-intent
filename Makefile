@@ -36,7 +36,7 @@ movie2: $(VENV) $(MNIST) Makefile histograms.pkl
 	sh makemovies.sh
 
 histograms.pkl: $(VENV) $(MNIST) Makefile
-	$(PYTHON) intent/run.py --num-epochs=25
+	$(PYTHON) intent/run.py --num-epochs=25 --histogram=histograms.pkl
 
 solve: histograms.pkl
 

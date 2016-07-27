@@ -16,6 +16,7 @@ from blocks.bricks import Rectifier
 from blocks.bricks import Softmax
 from blocks.bricks import application
 from blocks.bricks import lazy
+from blocks.bricks.bn import BatchNormalization, SpatialBatchNormalization
 from blocks.bricks.conv import Convolutional, ConvolutionalSequence
 from blocks.bricks.conv import Flattener, MaxPooling
 from blocks.bricks.interfaces import RNGMixin
@@ -97,13 +98,23 @@ class NoisyLinear(Initializable, Feedforward, Random):
     num_pieces : int
         The number of linear functions. Required by
         :meth:`~.Brick.allocate`.
+    use_bn : boolean
     """
     @lazy(allocation=['input_dim', 'output_dim', 'batch_size'])
     def __init__(self, input_dim, output_dim, batch_size,
-            prior_mean=0, prior_noise_level=0, **kwargs):
-        self.linear = Linear()
+            prior_mean=0, prior_noise_level=0, use_bn=True, **kwargs):
+        if use_bn:
+            self.linear = Linear(use_bias=False)
+            self.bn = BatchNormalization(learn_scale=False)
+            # With bn, we model the prior as a sum of two unit gaussians.
+            prior_noise_level = np.log(np.sqrt(2))
+        else:
+            self.linear = Linear()
+            self.bn = None
         self.mask = Linear(name='mask')
         children = [self.linear, self.mask]
+        if self.bn:
+            children.append(self.bn)
         kwargs.setdefault('children', []).extend(children)
         super(NoisyLinear, self).__init__(**kwargs)
 
@@ -116,6 +127,8 @@ class NoisyLinear(Initializable, Feedforward, Random):
     def _push_allocation_config(self):
         self.linear.input_dim = self.input_dim
         self.linear.output_dim = self.output_dim
+        if self.bn:
+            self.bn.input_dim = self.output_dim
         self.mask.input_dim = self.input_dim
         self.mask.output_dim = self.output_dim
 
@@ -137,6 +150,8 @@ class NoisyLinear(Initializable, Feedforward, Random):
             The transformed input
         """
         pre_noise = self.linear.apply(input_)
+        if self.bn:
+            pre_noise = self.bn.apply(pre_noise)
         noise_level = -tensor.clip(self.mask.apply(input_), -16, 16)
 
         # Allow incomplete batches by just taking the noise that is needed
@@ -164,7 +179,7 @@ class NoisyLinear(Initializable, Feedforward, Random):
         return super(NoisyLinear, self).get_dim(name)
 
 
-class NoisyConvolutional(Initializable, Feedforward, Random):
+class NoisyConvolutional(Initializable, Random):
     """Convolutional transformation sent through a learned noisy channel.
 
     Parameters (same as Convolutional)
@@ -173,11 +188,20 @@ class NoisyConvolutional(Initializable, Feedforward, Random):
         'filter_size', 'num_filters', 'num_channels', 'batch_size'])
     def __init__(self, filter_size, num_filters, num_channels, batch_size,
                  image_size=(None, None), step=(1, 1), border_mode='valid',
-                 tied_biases=True,
+                 tied_biases=True, use_bn=True,
                  prior_mean=0, prior_noise_level=0, **kwargs):
-        self.convolution = Convolutional()
+        if use_bn:
+            self.convolution = Convolutional(use_bias=False)
+            self.bn = SpatialBatchNormalization(learn_scale=False)
+            # With bn, we model the prior as a sum of two unit gaussians.
+            prior_noise_level = np.log(np.sqrt(2))
+        else:
+            self.convolution = Convolutional()
+            self.bn = None
         self.mask = Convolutional(name='mask')
         children = [self.convolution, self.mask]
+        if self.bn:
+            children.append(self.bn)
         kwargs.setdefault('children', []).extend(children)
         super(NoisyConvolutional, self).__init__(**kwargs)
         self.filter_size = filter_size
@@ -200,6 +224,8 @@ class NoisyConvolutional(Initializable, Feedforward, Random):
         self.convolution.step = self.step
         self.convolution.border_mode = self.border_mode
         self.convolution.tied_biases = self.tied_biases
+        if self.bn:
+            self.bn.input_dim = self.convolution.get_dim('output')
         self.mask.filter_size = self.filter_size
         self.mask.num_filters = self.num_filters
         self.mask.num_channels = self.num_channels
@@ -228,6 +254,8 @@ class NoisyConvolutional(Initializable, Feedforward, Random):
             The transformed input
         """
         pre_noise = self.convolution.apply(input_)
+        if self.bn:
+            pre_noise = self.bn.apply(pre_noise)
         # noise_level = self.mask.apply(input_)
         noise_level = tensor.clip(self.mask.apply(input_), -16, 16)
         # Allow incomplete batches by just taking the noise that is needed
