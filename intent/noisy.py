@@ -137,7 +137,7 @@ class NoisyLinear(Initializable, Feedforward, Random):
             The transformed input
         """
         pre_noise = self.linear.apply(input_)
-        noise_level = tensor.clip(self.mask.apply(input_), -16, 16)
+        noise_level = -tensor.clip(self.mask.apply(input_), -16, 16)
 
         # Allow incomplete batches by just taking the noise that is needed
         # noise = Print('noise')(self.parameters[0][:noise_level.shape[0], :])
@@ -195,7 +195,7 @@ class NoisyConvolutional(Initializable, Feedforward, Random):
         self.convolution.filter_size = self.filter_size
         self.convolution.num_filters = self.num_filters
         self.convolution.num_channels = self.num_channels
-        self.convolution.batch_size = self.batch_size
+        # self.convolution.batch_size = self.batch_size
         self.convolution.image_size = self.image_size
         self.convolution.step = self.step
         self.convolution.border_mode = self.border_mode
@@ -203,7 +203,7 @@ class NoisyConvolutional(Initializable, Feedforward, Random):
         self.mask.filter_size = self.filter_size
         self.mask.num_filters = self.num_filters
         self.mask.num_channels = self.num_channels
-        self.mask.batch_size = self.batch_size
+        # self.mask.batch_size = self.batch_size
         self.mask.image_size = self.image_size
         self.mask.step = self.step
         self.mask.border_mode = self.border_mode
@@ -352,6 +352,7 @@ class NoisyLeNet(FeedforwardSequence, Initializable):
                 self.layers, num_channels,
                 image_size=image_shape,
                 batch_size=self.batch_size)
+        self.conv_sequence.name = 'cs'
 
         # Construct a top MLP
         self.top_mlp = MLP(top_mlp_activations, top_mlp_dims,
@@ -419,17 +420,17 @@ def create_noisy_lenet_5(batch_size):
             Uniform(width=.11))
     convnet.top_mlp.linear_transformations[2].linear.weights_init = (
             Uniform(width=.2))
-
-    convnet.layers[0].mask.weights_init = (
-            Uniform(width=.2))
-    convnet.layers[3].mask.weights_init = (
-            Uniform(width=.09))
-    convnet.top_mlp.linear_transformations[0].mask.weights_init = (
-            Uniform(width=.08))
-    convnet.top_mlp.linear_transformations[1].mask.weights_init = (
-            Uniform(width=.11))
-    convnet.top_mlp.linear_transformations[2].mask.weights_init = (
-            Uniform(width=.2))
+#
+#    convnet.layers[0].mask.weights_init = (
+#            Uniform(width=.2))
+#    convnet.layers[3].mask.weights_init = (
+#            Uniform(width=.09))
+#    convnet.top_mlp.linear_transformations[0].mask.weights_init = (
+#            Uniform(width=.08))
+#    convnet.top_mlp.linear_transformations[1].mask.weights_init = (
+#            Uniform(width=.11))
+#    convnet.top_mlp.linear_transformations[2].mask.weights_init = (
+#            Uniform(width=.2))
 
 #    convnet.layers[0].mask.bias_init = (
 #            Constant(-3))

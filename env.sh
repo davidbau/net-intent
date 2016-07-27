@@ -32,6 +32,9 @@ python3 -m pip install wheel
 python3 -m pip install numpy
 python3 -m pip install scipy
 
+# install theano 0.8.x, not master
+pip install git+https://github.com/Theano/Theano.git@0.8.X#egg=theano
+
 # Try using the blocks install.
 pip install git+git://github.com/mila-udem/blocks.git \
   -r https://raw.githubusercontent.com/mila-udem/blocks/master/requirements.txt

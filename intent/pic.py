@@ -21,7 +21,7 @@ from blocks.extensions import FinishAfter, Timing, Printing, ProgressBar
 from blocks.extensions import SimpleExtension
 from blocks.extensions.monitoring import TrainingDataMonitoring
 from blocks.extensions.saveload import Checkpoint, Load
-from blocks.filter import VariableFilter
+from blocks.filter import VariableFilter, get_brick
 from blocks.graph import ComputationGraph
 from blocks.main_loop import MainLoop
 from blocks.model import Model
@@ -210,8 +210,11 @@ def create_main_loop(save_to, num_epochs, unit_order=None,
     # weights = VariableFilter(roles=[WEIGHT])(cg.variables)
     # cost = cost + sum([0.0003 * (W ** 2).sum() for W in weights])
     nits = VariableFilter(roles=[NITS])(cg.auxiliary_variables)
-    cost = cost + sum([n.mean() for n in nits])
+    # cost = cost + sum([n.mean() for n in nits])
+    nit_rate = tensor.concatenate([n.flatten() for n in nits]).mean()
+    nit_rate.name = 'nit_rate'
     # cost = cost + sum([n.sum() / n.shape[0] for n in nits])
+    cost = cost + nit_rate
     cost.name = 'cost_with_regularization'
 
     mnist_train = MNIST(("train",))
@@ -227,6 +230,7 @@ def create_main_loop(save_to, num_epochs, unit_order=None,
 
     # Generate pics for biases
     biases = VariableFilter(roles=[BIAS])(cg.parameters)
+    biases = list([b for b in biases if get_brick(b).name == 'mask'])
     noise_parameters = VariableFilter(roles=[NOISE])(cg.parameters)
 
     # Train with simple SGD
@@ -243,6 +247,7 @@ def create_main_loop(save_to, num_epochs, unit_order=None,
         batch_size=batch_size,
         pic_size=image_size,
         label_count=output_size,
+        grad_pics=False,
         after_batch=True)
 
     noise_extension = NoiseExtension(
@@ -277,7 +282,7 @@ def create_main_loop(save_to, num_epochs, unit_order=None,
                       noise_parameters=noise_parameters,
                       prefix="test"),
                   TrainingDataMonitoring(
-                      [cost, error_rate,
+                      [cost, error_rate, nit_rate,
                        aggregation.mean(algorithm.total_gradient_norm)],
                       prefix="train",
                       after_epoch=True),

@@ -72,8 +72,11 @@ def main(save_to, num_epochs,
     # Apply regularization to the cost
     # weights = VariableFilter(roles=[WEIGHT])(cg.variables)
     # cost = cost + sum([0.0003 * (W ** 2).sum() for W in weights])
-    cost = cost + sum([n.mean() for n in nits])
+    # cost = cost + sum([n.mean() for n in nits])
+    nit_rate = tensor.concatenate([n.flatten() for n in nits]).mean()
+    nit_rate.name = 'nit_rate'
     # cost = cost + sum([n.sum() / n.shape[0] for n in nits])
+    cost = cost + nit_rate
     cost.name = 'cost_with_regularization'
 
     mnist_train = MNIST(("train",))
@@ -89,7 +92,6 @@ def main(save_to, num_epochs,
 
     trainable_parameters = VariableFilter(roles=[WEIGHT, BIAS])(cg.parameters)
     noise_parameters = VariableFilter(roles=[NOISE])(cg.parameters)
-    print(cg.parameters, trainable_parameters, noise_parameters)
 
     # Train with simple SGD
     # from theano.compile.nanguardmode import NanGuardMode
@@ -119,12 +121,12 @@ def main(save_to, num_epochs,
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
                   NoisyDataStreamMonitoring(
-                      [cost, error_rate, confusion],
+                      [cost, error_rate, nit_rate, confusion],
                       mnist_test_stream,
                       noise_parameters=noise_parameters,
                       prefix="test"),
                   TrainingDataMonitoring(
-                      [cost, error_rate,
+                      [cost, error_rate, nit_rate,
                        aggregation.mean(algorithm.total_gradient_norm)],
                       prefix="train",
                       after_batch=True),

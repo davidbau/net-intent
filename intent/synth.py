@@ -31,7 +31,6 @@ from blocks.utils import shared_floatx
 from fuel.datasets import MNIST
 from fuel.schemes import SequentialScheme
 from fuel.streams import DataStream
-from intent.lenet import LeNet
 from intent.maxact import MaximumActivationSearch
 from intent.filmstrip import Filmstrip
 from intent.rf import make_mask
@@ -39,6 +38,7 @@ from intent.rf import layerarray_fieldmap
 from prior import create_fair_basis
 from theano import gradient
 from theano import tensor
+from intent.noisy import create_noisy_lenet_5
 import theano
 import numpy
 import numbers
@@ -46,12 +46,19 @@ import numbers
 # For testing
 from blocks.roles import OUTPUT
 
+def add_noise(params):
+    for p in params:
+        if p.endswith('.N'):
+            params[p] = numpy.random.normal(params[p].shape).astype(
+                    params[p].dtype)
+
+def zero_noise(params):
+    for p in params:
+        if p.endswith('.N'):
+            params[p] = numpy.zeros(params[p].shape, dtype=params[p].dtype)
+
 def main(save_to):
-    batch_size = 365
-    feature_maps = [6, 16]
-    mlp_hiddens = [120, 84]
-    conv_sizes = [5, 5]
-    pool_sizes = [2, 2]
+    batch_size = 500
     image_size = (28, 28)
     output_size = 10
 
@@ -60,34 +67,7 @@ def main(save_to):
     #    mlp_hiddens = [500]
 
     # Use ReLUs everywhere and softmax for the final prediction
-    conv_activations = [Rectifier() for _ in feature_maps]
-    mlp_activations = [Rectifier() for _ in mlp_hiddens] + [Softmax()]
-    convnet = LeNet(conv_activations, 1, image_size,
-                    filter_sizes=zip(conv_sizes, conv_sizes),
-                    feature_maps=feature_maps,
-                    pooling_sizes=zip(pool_sizes, pool_sizes),
-                    top_mlp_activations=mlp_activations,
-                    top_mlp_dims=mlp_hiddens + [output_size],
-                    border_mode='valid',
-                    weights_init=Uniform(width=.2),
-                    biases_init=Constant(0))
-    # We push initialization config to set different initialization schemes
-    # for convolutional layers.
-    convnet.push_initialization_config()
-    convnet.layers[0].weights_init = Uniform(width=.2)
-    convnet.layers[1].weights_init = Uniform(width=.09)
-    convnet.top_mlp.linear_transformations[0].weights_init = Uniform(width=.08)
-    convnet.top_mlp.linear_transformations[1].weights_init = Uniform(width=.11)
-    convnet.initialize()
-    logging.info("Input dim: {} {} {}".format(
-        *convnet.children[0].get_dim('input_')))
-    for i, layer in enumerate(convnet.layers):
-        if isinstance(layer, Activation):
-            logging.info("Layer {} ({})".format(
-                i, layer.__class__.__name__))
-        else:
-            logging.info("Layer {} ({}) dim: {} {} {}".format(
-                i, layer.__class__.__name__, *layer.get_dim('output')))
+    convnet = create_noisy_lenet_5(batch_size)
 
     mnist_test = MNIST(("test",), sources=['features', 'targets'])
     basis_init = create_fair_basis(mnist_test, 10, 2)
@@ -110,6 +90,8 @@ def main(save_to):
 
     # Load it with trained parameters
     params = load_parameters(open(save_to, 'rb'))
+    # Zero any noise
+    zero_noise(params)
     model.set_parameter_values(params)
 
     learning_rate = shared_floatx(0.01, 'learning_rate')
@@ -118,11 +100,21 @@ def main(save_to):
     suffix = '_negsynth.jpg' if negate else '_synth.jpg'
     for output in outs:
         layer = get_brick(output)
+        # For now, skip masks -for some reason they are always NaN
+        iterations = 10000
+        if layer.name == 'mask':
+            continue
+            # iterations = 20000
+        layername = layer.parents[0].name + '-' + layer.name
+        # if layername != 'noisylinear_2-linear':
+        #     continue
         dims = layer.get_dims(['output'])[0]
         if negate:
             measure = -output
         else:
             measure = output
+        measure = measure[(slice(0, basis_init.shape[0]), ) +
+                (slice(None),) * (measure.ndim - 1)]
         if isinstance(dims, numbers.Integral):
             dims = (dims, )
             costvec = -tensor.log(tensor.nnet.softmax(
@@ -133,13 +125,17 @@ def main(save_to):
             costvec = -tensor.log(tensor.nnet.softmax(
                 maxout)[:,unit].flatten())
         # Add a regularization to favor gray images.
-        cost = costvec.sum() + (x - 0.5).norm(2) * (
-                10.0 / basis_init.shape[0])
+        print(layer, layer.get_hierarchical_name(output), output, dims)
+        # cost = costvec.sum() + (x - 0.5).norm(2) * (
+        #         10.0 / basis_init.shape[0])
+        cost = costvec.sum()
         grad = gradient.grad(cost, x)
         stepx = x - learning_rate * grad
         normx = stepx / tensor.shape_padright(
                 stepx.flatten(ndim=2).max(axis=1), n_ones=3)
         newx = tensor.clip(normx, 0, 1)
+        newx = newx[(slice(0, basis_init.shape[0]), ) +
+                (slice(None),) * (newx.ndim - 1)]
         fn = theano.function([], [cost], updates=[(x, newx)])
         filmstrip = Filmstrip(
             basis_init.shape[-2:], (dims[0], basis_init.shape[0]),
@@ -147,15 +143,16 @@ def main(save_to):
         for u in range(dims[0]):
             unit.set_value(u)
             x.set_value(basis_init)
-            print('layer', layer.name, 'unit', u)
-            for index in range(5000):
+            print('layer', layername, 'unit', u)
+            for index in range(iterations):
+                add_noise(params)
                 c = fn()[0]
                 if index % 1000 == 0:
                     print('cost', c)
                     result = x.get_value()
                     for i2 in range(basis_init.shape[0]):
                         filmstrip.set_image((u, i2), result[i2,:,:,:])
-                    filmstrip.save(layer.name + suffix)
+                    filmstrip.save(layername + suffix)
             result = x.get_value()
             for index in range(basis_init.shape[0]):
                 filmstrip.set_image((u, index), result[index,:,:,:])

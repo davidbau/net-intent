@@ -57,7 +57,7 @@ def _create_synpic_updates(synpic, jacobian, attributed_pic):
 
 class SynpicExtension(SimpleExtension):
     def __init__(self, synpic_parameters=None,
-            case_costs=None, pics=None, case_labels=None,
+            case_costs=None, pics=None, case_labels=None, grad_pics=True,
             batch_size=None, pic_size=None, label_count=None, **kwargs):
         kwargs.setdefault("before_training", True)
         center_val = 0.5
@@ -75,8 +75,11 @@ class SynpicExtension(SimpleExtension):
         #     tensor.extra_ops.to_one_hot(case_labels.flatten(), label_count),
         #     pics[:, 0, :, :], axes=0)
         zeroed_pics = pics - 0.5
-        focused_pics = zeroed_pics * abs(
-                gradient.grad(case_costs.mean(), pics))
+        if grad_pics:
+            focused_pics = zeroed_pics * abs(
+                    gradient.grad(case_costs.mean(), pics))
+        else:
+            focused_pics = zeroed_pics
         attributed_pics = tensor.batched_tensordot(
             tensor.extra_ops.to_one_hot(
                 case_labels.flatten(), label_count),
