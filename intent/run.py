@@ -41,13 +41,12 @@ from intent.ablation import Sum
 # For testing
 
 def main(save_to, num_epochs,
-         num_batches=None, resume=False):
+         regularization=0.0003, subset=None, num_batches=None,
+         histogram=None, resume=False):
     batch_size = 500
     output_size = 10
     convnet = create_lenet_5()
     layers = convnet.layers
-
-    mnist_test = MNIST(("test",), sources=['features', 'targets'])
 
     x = tensor.tensor4('features')
     y = tensor.lmatrix('targets')
@@ -68,10 +67,13 @@ def main(save_to, num_epochs,
 
     # Apply regularization to the cost
     weights = VariableFilter(roles=[WEIGHT])(cg.variables)
-    cost = cost + sum([0.0003 * (W ** 2).sum() for W in weights])
+    cost = cost + sum([regularization * (W ** 2).sum() for W in weights])
     cost.name = 'cost_with_regularization'
 
-    mnist_train = MNIST(("train",))
+    if subset:
+        mnist_train = MNIST(("train",), subset=slice(1, subset))
+    else:
+        mnist_train = MNIST(("train",))
     mnist_train_stream = DataStream.default_stream(
         mnist_train, iteration_scheme=ShuffledScheme(
             mnist_train.num_examples, batch_size))
@@ -87,17 +89,10 @@ def main(save_to, num_epochs,
         cost=cost, parameters=cg.parameters,
         step_rule=AdaDelta())
 
-    attribution = AttributionExtension(
-        components=components,
-        parameters=cg.parameters,
-        components_size=output_size,
-        after_batch=True)
-
     # `Timing` extension reports time for reading data, aggregating a batch
     # and monitoring;
     # `ProgressBar` displays a nice progress bar during training.
-    extensions = [attribution,
-                  Timing(),
+    extensions = [Timing(),
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
                   DataStreamMonitoring(
@@ -113,6 +108,14 @@ def main(save_to, num_epochs,
                   ProgressBar(),
                   Printing()]
 
+    if histogram:
+        attribution = AttributionExtension(
+            components=components,
+            parameters=cg.parameters,
+            components_size=output_size,
+            after_batch=True)
+        extensions.insert(0, attribution)
+
     if resume:
         extensions.append(Load(save_to, True, True))
 
@@ -126,7 +129,8 @@ def main(save_to, num_epochs,
 
     main_loop.run()
 
-    save_attributions(attribution)
+    if histogram:
+        save_attributions(attribution, filename=histogram)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
@@ -134,9 +138,14 @@ if __name__ == "__main__":
                             "on the MNIST dataset.")
     parser.add_argument("--num-epochs", type=int, default=5,
                         help="Number of training epochs to do.")
+    parser.add_argument("--histogram", help="histogram file")
     parser.add_argument("save_to", default="mnist.tar", nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
+    parser.add_argument('--regularization', type=float, default=0.0003,
+                        help="Amount of regularization to apply.")
+    parser.add_argument('--subset', type=int, default=None,
+                        help="Size of limited training set.")
     parser.add_argument('--resume', dest='resume', action='store_true')
     parser.add_argument('--no-resume', dest='resume', action='store_false')
     parser.set_defaults(resume=False)
