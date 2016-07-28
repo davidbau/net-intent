@@ -43,13 +43,11 @@ from intent.ablation import Sum
 # For testing
 
 def main(save_to, num_epochs, regularization=1.0,
-         num_batches=None, resume=False, histogram=None):
+         subset=None, num_batches=None, resume=False, histogram=None):
     batch_size = 500
     output_size = 10
     convnet = create_noisy_lenet_5(batch_size)
     layers = convnet.layers
-
-    mnist_test = MNIST(("test",), sources=['features', 'targets'])
 
     x = tensor.tensor4('features')
     y = tensor.lmatrix('targets')
@@ -78,7 +76,10 @@ def main(save_to, num_epochs, regularization=1.0,
     cost = cost + regularization * nit_rate
     cost.name = 'cost_with_regularization'
 
-    mnist_train = MNIST(("train",))
+    if subset:
+        mnist_train = MNIST(("train",), subset=slice(1, subset))
+    else:
+        mnist_train = MNIST(("train",))
     mnist_train_stream = DataStream.default_stream(
         mnist_train, iteration_scheme=ShuffledScheme(
             mnist_train.num_examples, batch_size))
@@ -101,12 +102,6 @@ def main(save_to, num_epochs, regularization=1.0,
         step_rule=AdaDelta())
     #    theano_func_kwargs={'mode': NanGuardMode(
     #        nan_is_error=True, inf_is_error=False, big_is_error=False)})
-
-    attribution = AttributionExtension(
-        components=components,
-        parameters=trainable_parameters,
-        components_size=output_size,
-        after_batch=True)
 
     add_noise = NoiseExtension(
         noise_parameters=noise_parameters)
@@ -168,6 +163,8 @@ if __name__ == "__main__":
                              "process.")
     parser.add_argument('--regularization', type=float, default=1.0,
                         help="Regularization parameter, default 1.0.")
+    parser.add_argument('--subset', type=int, default=None,
+                        help="Size of limited training set.")
     parser.add_argument('--resume', dest='resume', action='store_true')
     parser.add_argument('--no-resume', dest='resume', action='store_false')
     parser.set_defaults(resume=False)
