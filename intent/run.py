@@ -44,14 +44,12 @@ from intent.ablation import Sum
 
 # For testing
 
-def main(save_to, num_epochs,
-         num_batches=None, resume=False, histogram=None):
+def main(save_to, num_epochs, regularization=1.0,
+         subset=None, num_batches=None, resume=False, histogram=None):
     batch_size = 500
     output_size = 10
     convnet = create_noisy_lenet_5(batch_size)
     layers = convnet.layers
-
-    mnist_test = MNIST(("test",), sources=['features', 'targets'])
 
     x = tensor.tensor4('features')
     y = tensor.lmatrix('targets')
@@ -81,7 +79,7 @@ def main(save_to, num_epochs,
     test_nits = VariableFilter(roles=[NITS])(test_cg.auxiliary_variables)
     test_nit_rate = tensor.concatenate([n.flatten() for n in test_nits]).mean()
     test_nit_rate.name = 'nit_rate'
-    test_cost = test_cost + test_nit_rate
+    test_cost = test_cost + regularization * test_nit_rate
     test_cost.name = 'cost_with_regularization'
 
     # Apply regularization to the cost
@@ -90,7 +88,7 @@ def main(save_to, num_epochs,
     train_nit_rate = tensor.concatenate([n.flatten() for n in train_nits]
             ).mean()
     train_nit_rate.name = 'nit_rate'
-    train_cost = train_cost + train_nit_rate
+    train_cost = train_cost + regularization * train_nit_rate
     train_cost.name = 'cost_with_regularization'
 
     # Do batchnorm updates
@@ -98,7 +96,10 @@ def main(save_to, num_epochs,
     pop_updates = get_batch_normalization_updates(train_cg)
     bn_updates = [(p, m * alpha + p * (1 - alpha)) for p, m in pop_updates]
 
-    mnist_train = MNIST(("train",))
+    if subset:
+        mnist_train = MNIST(("train",), subset=slice(1, subset))
+    else:
+        mnist_train = MNIST(("train",))
     mnist_train_stream = DataStream.default_stream(
         mnist_train, iteration_scheme=ShuffledScheme(
             mnist_train.num_examples, batch_size))
@@ -183,6 +184,10 @@ if __name__ == "__main__":
                         help="Destination to save the state of the training "
                              "process.")
     parser.add_argument("--histogram", help="histogram file")
+    parser.add_argument('--regularization', type=float, default=1.0,
+                        help="Regularization parameter, default 1.0.")
+    parser.add_argument('--subset', type=int, default=None,
+                        help="Size of limited training set.")
     parser.add_argument('--resume', dest='resume', action='store_true')
     parser.add_argument('--no-resume', dest='resume', action='store_false')
     parser.set_defaults(resume=False)
