@@ -97,7 +97,8 @@ def main(save_to, num_epochs, regularization=1.0,
     bn_updates = [(p, m * alpha + p * (1 - alpha)) for p, m in pop_updates]
 
     if subset:
-        mnist_train = MNIST(("train",), subset=slice(1, subset))
+        start = 30000 - subset // 2
+        mnist_train = MNIST(("train",), subset=slice(start, start+subset))
     else:
         mnist_train = MNIST(("train",))
     mnist_train_stream = DataStream.default_stream(
