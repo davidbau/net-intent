@@ -5,6 +5,8 @@ import numpy as np
 import theano
 from theano import tensor
 from theano.printing import Print
+from picklable_itertools import chain, repeat, imap
+from picklable_itertools.extras import partition_all
 
 from blocks.bricks import Feedforward
 from blocks.bricks import FeedforwardSequence
@@ -26,6 +28,8 @@ from blocks.monitoring.evaluators import DatasetEvaluator
 from blocks.roles import add_role, AuxiliaryRole, ParameterRole
 from blocks.utils import shared_floatx_zeros
 from collections import OrderedDict
+import fuel
+from fuel.schemes import BatchScheme
 from toolz.itertoolz import interleave
 
 
@@ -446,3 +450,22 @@ def create_noisy_lenet_5(batch_size):
     convnet.initialize()
 
     return convnet
+
+class SampledScheme(BatchScheme):
+    """Sampled batches iterator.
+    Like shuffledScheme but uses a sampling method instead, and makes
+    the final batch complete.
+    """
+    def __init__(self, *args, **kwargs):
+        self.rng = kwargs.pop('rng', None)
+        if self.rng is None:
+            self.rng = np.random.RandomState(fuel.config.default_seed)
+        super(SampledScheme, self).__init__(*args, **kwargs)
+
+    def get_request_iterator(self):
+        indices = list(self.indices)
+        count = len(indices)
+        if count % self.batch_size:
+            count += self.batch_size - self.batch_size % count
+        self.rng.choice(indices, count)
+        return imap(list, partition_all(self.batch_size, indices))

@@ -27,12 +27,13 @@ from blocks.model import Model
 from blocks.monitoring import aggregation
 from blocks.roles import WEIGHT, BIAS
 from fuel.datasets import MNIST
-from fuel.schemes import ShuffledScheme
 from fuel.streams import DataStream
+from fuel.schemes import ShuffledScheme
 from intent.lenet import LeNet, create_lenet_5
 from intent.noisy import NoisyLeNet, create_noisy_lenet_5
 from intent.noisy import NITS, NOISE, NoiseExtension
 from intent.noisy import NoisyDataStreamMonitoring
+from intent.noisy import SampledScheme
 from intent.attrib import AttributionExtension
 from intent.attrib import ComponentwiseCrossEntropy
 from intent.attrib import print_attributions
@@ -81,7 +82,7 @@ def main(save_to, num_epochs, regularization=1.0,
     else:
         mnist_train = MNIST(("train",))
     mnist_train_stream = DataStream.default_stream(
-        mnist_train, iteration_scheme=ShuffledScheme(
+        mnist_train, iteration_scheme=SampledScheme(
             mnist_train.num_examples, batch_size))
 
     mnist_test = MNIST(("test",))
