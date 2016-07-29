@@ -436,16 +436,16 @@ def create_noisy_lenet_5(batch_size):
 #    convnet.top_mlp.linear_transformations[2].mask.weights_init = (
 #            Uniform(width=.2))
 
-    convnet.layers[0].mask.bias_init = (
-            Constant(8))
-    convnet.layers[3].mask.bias_init = (
-            Constant(8))
-    convnet.top_mlp.linear_transformations[0].mask.bias_init = (
-            Constant(8))
-    convnet.top_mlp.linear_transformations[1].mask.bias_init = (
-            Constant(8))
-    convnet.top_mlp.linear_transformations[2].mask.bias_init = (
-            Constant(8))
+#    convnet.layers[0].mask.bias_init = (
+#            Constant(8))
+#    convnet.layers[3].mask.bias_init = (
+#            Constant(8))
+#    convnet.top_mlp.linear_transformations[0].mask.bias_init = (
+#            Constant(8))
+#    convnet.top_mlp.linear_transformations[1].mask.bias_init = (
+#            Constant(8))
+#    convnet.top_mlp.linear_transformations[2].mask.bias_init = (
+#            Constant(8))
 
     convnet.initialize()
 
