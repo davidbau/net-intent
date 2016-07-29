@@ -11,7 +11,7 @@ from argparse import ArgumentParser
 
 from theano import tensor
 
-from blocks.algorithms import Scale, AdaDelta, GradientDescent
+from blocks.algorithms import Scale, AdaDelta, GradientDescent, Momentum
 from blocks.bricks import Rectifier
 from blocks.bricks import Activation
 from blocks.bricks import Softmax
@@ -37,6 +37,9 @@ from intent.attrib import print_attributions
 from intent.attrib import save_attributions
 from intent.ablation import ConfusionMatrix
 from intent.ablation import Sum
+import json
+from json import JSONEncoder, dumps
+import numpy
 
 # For testing
 
@@ -67,7 +70,9 @@ def main(save_to, num_epochs,
 
     # Apply regularization to the cost
     weights = VariableFilter(roles=[WEIGHT])(cg.variables)
-    cost = cost + sum([regularization * (W ** 2).sum() for W in weights])
+    l2_norm = sum([(W ** 2).sum() for W in weights])
+    l2_norm.name = 'l2_norm'
+    cost = cost + regularization * l2_norm
     cost.name = 'cost_with_regularization'
 
     if subset:
@@ -88,7 +93,7 @@ def main(save_to, num_epochs,
     # Train with simple SGD
     algorithm = GradientDescent(
         cost=cost, parameters=cg.parameters,
-        step_rule=AdaDelta())
+        step_rule=AdaDelta(decay_rate=0.99))
 
     # `Timing` extension reports time for reading data, aggregating a batch
     # and monitoring;
@@ -101,7 +106,7 @@ def main(save_to, num_epochs,
                       mnist_test_stream,
                       prefix="test"),
                   TrainingDataMonitoring(
-                      [cost, error_rate,
+                      [cost, error_rate, l2_norm,
                        aggregation.mean(algorithm.total_gradient_norm)],
                       prefix="train",
                       after_epoch=True),
@@ -132,6 +137,19 @@ def main(save_to, num_epochs,
 
     if histogram:
         save_attributions(attribution, filename=histogram)
+
+    with open('execution-log.json', 'w') as outfile:
+        json.dump(main_loop.log, outfile, cls=NumpyEncoder)
+
+class NumpyEncoder(JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, numpy.ndarray):
+            if obj.ndim == 0:
+                return obj + 0
+            if obj.ndim == 1:
+                return obj.tolist()
+            return list([self.default(row) for row in obj])
+        return JSONEncoder.default(self, obj)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
