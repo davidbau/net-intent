@@ -11,7 +11,7 @@ from argparse import ArgumentParser
 
 from theano import tensor
 
-from blocks.algorithms import Scale, AdaDelta, GradientDescent
+from blocks.algorithms import Scale, AdaDelta, GradientDescent, Momentum
 from blocks.bricks import Rectifier
 from blocks.bricks import Activation
 from blocks.bricks import Softmax
@@ -41,6 +41,9 @@ from intent.attrib import print_attributions
 from intent.attrib import save_attributions
 from intent.ablation import ConfusionMatrix
 from intent.ablation import Sum
+import json
+from json import JSONEncoder, dumps
+import numpy
 
 # For testing
 
@@ -122,9 +125,12 @@ def main(save_to, num_epochs, regularization=1.0,
     algorithm = GradientDescent(
         cost=train_cost,
         parameters=trainable_parameters,
-        step_rule=AdaDelta())
+        step_rule=AdaDelta(decay_rate=0.99))
 
     algorithm.add_updates(bn_updates)
+    #    step_rule=AdaDelta())
+    #    theano_func_kwargs={'mode': NanGuardMode(
+    #        nan_is_error=True, inf_is_error=False, big_is_error=False)})
 
     add_noise = NoiseExtension(
         noise_parameters=noise_parameters)
@@ -174,6 +180,19 @@ def main(save_to, num_epochs, regularization=1.0,
 
     if histogram:
         save_attributions(attribution, filename=histogram)
+
+    with open('execution-log.json', 'w') as outfile:
+        json.dump(main_loop.log, outfile, cls=NumpyEncoder)
+
+class NumpyEncoder(JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, numpy.ndarray):
+            if obj.ndim == 0:
+                return obj + 0
+            if obj.ndim == 1:
+                return obj.tolist()
+            return list([self.default(row) for row in obj])
+        return JSONEncoder.default(self, obj)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
