@@ -72,11 +72,13 @@ class UnitNoiseGenerator(Random):
 
 class NoiseExtension(SimpleExtension, RNGMixin):
     def __init__(self, noise_parameters=None, **kwargs):
-        kwargs.setdefault("before_batch", True)
+        kwargs.setdefault("before_training", True)
         self.noise_parameters = noise_parameters
         std = 1.0
         self.noise_init = IsotropicGaussian(std=std)
-        self.theano_generator = UnitNoiseGenerator(std=std)
+        theano_seed = self.rng.randint(np.iinfo(np.int32).max)
+        self.theano_generator = UnitNoiseGenerator(
+                std=std, theano_seed=theano_seed)
         self.noise_updates = OrderedDict(
             [(param, self.theano_generator.apply(param))
                 for param in self.noise_parameters])
@@ -85,7 +87,7 @@ class NoiseExtension(SimpleExtension, RNGMixin):
     def do(self, callback_name, *args):
         self.parse_args(callback_name, args)
         if callback_name == 'before_training':
-            for p in self.parameters:
+            for p in self.noise_parameters:
                 self.noise_init.initialize(p, self.rng)
             self.main_loop.algorithm.add_updates(self.noise_updates)
 
