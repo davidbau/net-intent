@@ -15,17 +15,20 @@ from blocks.algorithms import Scale, AdaDelta, GradientDescent, Momentum
 from blocks.bricks import Rectifier
 from blocks.bricks import Activation
 from blocks.bricks import Softmax
+from blocks.bricks import Linear
+from blocks.bricks.conv import Convolutional
 from blocks.bricks.cost import CategoricalCrossEntropy, MisclassificationRate
 from blocks.extensions import FinishAfter, Timing, Printing, ProgressBar
 from blocks.extensions.monitoring import TrainingDataMonitoring
 from blocks.extensions.saveload import Checkpoint, Load
 from blocks.filter import VariableFilter
 from blocks.graph import ComputationGraph
+from blocks.graph import apply_dropout
 from blocks.initialization import Constant, Uniform
 from blocks.main_loop import MainLoop
 from blocks.model import Model
 from blocks.monitoring import aggregation
-from blocks.roles import WEIGHT, BIAS
+from blocks.roles import WEIGHT, BIAS, OUTPUT
 from fuel.datasets import MNIST
 from fuel.streams import DataStream
 from fuel.schemes import ShuffledScheme
@@ -58,27 +61,39 @@ def main(save_to, num_epochs, regularization=1.0,
 
     # Normalize input and apply the convnet
     probs = convnet.apply(x)
-    cost = (CategoricalCrossEntropy().apply(y.flatten(), probs)
+    test_cost = (CategoricalCrossEntropy().apply(y.flatten(), probs)
             .copy(name='cost'))
-    components = (ComponentwiseCrossEntropy().apply(y.flatten(), probs)
+    test_components = (ComponentwiseCrossEntropy().apply(y.flatten(), probs)
             .copy(name='components'))
-    error_rate = (MisclassificationRate().apply(y.flatten(), probs)
+    test_error_rate = (MisclassificationRate().apply(y.flatten(), probs)
                   .copy(name='error_rate'))
-    confusion = (ConfusionMatrix().apply(y.flatten(), probs)
+    test_confusion = (ConfusionMatrix().apply(y.flatten(), probs)
                   .copy(name='confusion'))
-    confusion.tag.aggregation_scheme = Sum(confusion)
+    test_confusion.tag.aggregation_scheme = Sum(test_confusion)
 
-    cg = ComputationGraph([cost, error_rate, components])
-    nits = VariableFilter(roles=[NITS])(cg.auxiliary_variables)
-
-    # Apply regularization to the cost
-    # weights = VariableFilter(roles=[WEIGHT])(cg.variables)
-    # cost = cost + sum([0.0003 * (W ** 2).sum() for W in weights])
-    # cost = cost + sum([n.mean() for n in nits])
+    test_cg = ComputationGraph([test_cost, test_error_rate, test_components])
+    nits = VariableFilter(roles=[NITS])(test_cg.auxiliary_variables)
     nit_rate = tensor.concatenate([n.flatten() for n in nits]).mean()
     nit_rate.name = 'nit_rate'
-    cost = cost + regularization * nit_rate
-    cost.name = 'cost_with_regularization'
+    # weights = VariableFilter(roles=[WEIGHT])(test_cg.variables)
+    # l2_norm = sum([(W ** 2).sum() for W in weights])
+    # l2_norm.name = 'l2_norm'
+
+    # Apply dropout to all layer outputs except final softmax
+    dropout_vars = VariableFilter(
+            roles=[OUTPUT], bricks=[Convolutional, Linear],
+            theano_name_regex="^(?!linear_2).*$")(test_cg.variables)
+
+    train_cg = apply_dropout(test_cg, dropout_vars, 0.5)
+    train_cost, train_error_rate, train_components = train_cg.outputs
+
+    # Apply regularization to the cost
+    test_cost = test_cost + regularization * nit_rate
+    test_cost.name = 'cost_with_regularization'
+
+    # Training version of cost
+    train_cost = train_cost + regularization * nit_rate
+    train_cost.name = 'cost_with_regularization'
 
     if subset:
         start = 30000 - subset // 2
@@ -95,14 +110,15 @@ def main(save_to, num_epochs, regularization=1.0,
         iteration_scheme=ShuffledScheme(
             mnist_test.num_examples, batch_size))
 
-    trainable_parameters = VariableFilter(roles=[WEIGHT, BIAS])(cg.parameters)
-    noise_parameters = VariableFilter(roles=[NOISE])(cg.parameters)
+    trainable_parameters = VariableFilter(
+            roles=[WEIGHT, BIAS])(train_cg.parameters)
+    noise_parameters = VariableFilter(roles=[NOISE])(train_cg.parameters)
 
     # Train with simple SGD
     # from theano.compile.nanguardmode import NanGuardMode
 
     algorithm = GradientDescent(
-        cost=cost,
+        cost=train_cost,
         parameters=trainable_parameters,
         step_rule=AdaDelta(decay_rate=0.99))
     #    step_rule=AdaDelta())
@@ -120,12 +136,12 @@ def main(save_to, num_epochs, regularization=1.0,
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
                   NoisyDataStreamMonitoring(
-                      [cost, error_rate, nit_rate, confusion],
+                      [test_cost, test_error_rate, test_confusion],
                       mnist_test_stream,
                       noise_parameters=noise_parameters,
                       prefix="test"),
                   TrainingDataMonitoring(
-                      [cost, error_rate, nit_rate,
+                      [train_cost, train_error_rate, nit_rate,
                        aggregation.mean(algorithm.total_gradient_norm)],
                       prefix="train",
                       after_batch=True),
@@ -135,7 +151,7 @@ def main(save_to, num_epochs, regularization=1.0,
 
     if histogram:
         attribution = AttributionExtension(
-            components=components,
+            components=train_components,
             parameters=trainable_parameters,
             components_size=output_size,
             after_batch=True)
@@ -144,7 +160,7 @@ def main(save_to, num_epochs, regularization=1.0,
     if resume:
         extensions.append(Load(save_to, True, True))
 
-    model = Model(cost)
+    model = Model(train_cost)
 
     main_loop = MainLoop(
         algorithm,
