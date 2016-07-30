@@ -34,6 +34,7 @@ from fuel.streams import DataStream
 from fuel.schemes import ShuffledScheme
 from intent.lenet import LeNet, create_lenet_5
 from intent.noisy import NoisyLeNet, create_noisy_lenet_5
+from intent.noisy import NoisyLinear, NoisyConvolutional
 from intent.noisy import NITS, NOISE, NoiseExtension
 from intent.noisy import NoisyDataStreamMonitoring
 from intent.noisy import SampledScheme
@@ -81,8 +82,8 @@ def main(save_to, num_epochs, regularization=1.0,
 
     # Apply dropout to all layer outputs except final softmax
     dropout_vars = VariableFilter(
-            roles=[OUTPUT], bricks=[Convolutional, Linear],
-            theano_name_regex="^(?!linear_2).*$")(test_cg.variables)
+            roles=[OUTPUT], bricks=[NoisyConvolutional, NoisyLinear],
+            theano_name_regex="^(?!noisylinear_2).*$")(test_cg.variables)
 
     train_cg = apply_dropout(test_cg, dropout_vars, 0.5)
     train_cost, train_error_rate, train_components = train_cg.outputs
