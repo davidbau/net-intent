@@ -15,6 +15,8 @@ from blocks.algorithms import Scale, AdaDelta, GradientDescent, Momentum
 from blocks.bricks import Rectifier
 from blocks.bricks import Activation
 from blocks.bricks import Softmax
+from blocks.bricks import Linear
+from blocks.bricks.conv import Convolutional
 from blocks.bricks.cost import CategoricalCrossEntropy, MisclassificationRate
 from blocks.extensions import FinishAfter, Timing, Printing, ProgressBar
 from blocks.extensions.monitoring import DataStreamMonitoring
@@ -22,11 +24,12 @@ from blocks.extensions.monitoring import TrainingDataMonitoring
 from blocks.extensions.saveload import Checkpoint, Load
 from blocks.filter import VariableFilter
 from blocks.graph import ComputationGraph
+from blocks.graph import apply_dropout
 from blocks.initialization import Constant, Uniform
 from blocks.main_loop import MainLoop
 from blocks.model import Model
 from blocks.monitoring import aggregation
-from blocks.roles import WEIGHT
+from blocks.roles import WEIGHT, OUTPUT
 from fuel.datasets import MNIST
 from fuel.schemes import ShuffledScheme
 from fuel.streams import DataStream
@@ -56,24 +59,36 @@ def main(save_to, num_epochs,
 
     # Normalize input and apply the convnet
     probs = convnet.apply(x)
-    cost = (CategoricalCrossEntropy().apply(y.flatten(), probs)
+    test_cost = (CategoricalCrossEntropy().apply(y.flatten(), probs)
             .copy(name='cost'))
-    components = (ComponentwiseCrossEntropy().apply(y.flatten(), probs)
+    test_components = (ComponentwiseCrossEntropy().apply(y.flatten(), probs)
             .copy(name='components'))
-    error_rate = (MisclassificationRate().apply(y.flatten(), probs)
+    test_error_rate = (MisclassificationRate().apply(y.flatten(), probs)
                   .copy(name='error_rate'))
-    confusion = (ConfusionMatrix().apply(y.flatten(), probs)
+    test_confusion = (ConfusionMatrix().apply(y.flatten(), probs)
                   .copy(name='confusion'))
-    confusion.tag.aggregation_scheme = Sum(confusion)
+    test_confusion.tag.aggregation_scheme = Sum(test_confusion)
 
-    cg = ComputationGraph([cost, error_rate, components])
+    test_cg = ComputationGraph([test_cost, test_error_rate, test_components])
+
+    # Apply dropout to all layer outputs except final softmax
+    dropout_vars = VariableFilter(
+            roles=[OUTPUT], bricks=[Convolutional, Linear],
+            theano_name_regex="^(?!linear_2).*$")(test_cg.variables)
+
+    train_cg = apply_dropout(test_cg, dropout_vars, 0.5)
+    train_cost, train_error_rate, train_components = train_cg.outputs
 
     # Apply regularization to the cost
-    weights = VariableFilter(roles=[WEIGHT])(cg.variables)
+    weights = VariableFilter(roles=[WEIGHT])(train_cg.variables)
     l2_norm = sum([(W ** 2).sum() for W in weights])
     l2_norm.name = 'l2_norm'
-    cost = cost + regularization * l2_norm
-    cost.name = 'cost_with_regularization'
+    test_cost = test_cost + regularization * l2_norm
+    test_cost.name = 'cost_with_regularization'
+
+    # Training version of cost
+    train_cost = train_cost + regularization * l2_norm
+    train_cost.name = 'cost_with_regularization'
 
     if subset:
         start = 30000 - subset // 2
@@ -92,7 +107,7 @@ def main(save_to, num_epochs,
 
     # Train with simple SGD
     algorithm = GradientDescent(
-        cost=cost, parameters=cg.parameters,
+        cost=train_cost, parameters=train_cg.parameters,
         step_rule=AdaDelta(decay_rate=0.99))
 
     # `Timing` extension reports time for reading data, aggregating a batch
@@ -102,11 +117,11 @@ def main(save_to, num_epochs,
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
                   DataStreamMonitoring(
-                      [cost, error_rate, confusion],
+                      [test_cost, test_error_rate, test_confusion],
                       mnist_test_stream,
                       prefix="test"),
                   TrainingDataMonitoring(
-                      [cost, error_rate, l2_norm,
+                      [train_cost, train_error_rate, l2_norm,
                        aggregation.mean(algorithm.total_gradient_norm)],
                       prefix="train",
                       after_epoch=True),
@@ -116,7 +131,7 @@ def main(save_to, num_epochs,
 
     if histogram:
         attribution = AttributionExtension(
-            components=components,
+            components=train_components,
             parameters=cg.parameters,
             components_size=output_size,
             after_batch=True)
@@ -125,7 +140,7 @@ def main(save_to, num_epochs,
     if resume:
         extensions.append(Load(save_to, True, True))
 
-    model = Model(cost)
+    model = Model(train_cost)
 
     main_loop = MainLoop(
         algorithm,
