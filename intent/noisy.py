@@ -467,7 +467,7 @@ class SampledScheme(BatchScheme):
     def get_request_iterator(self):
         indices = list(self.indices)
         count = len(indices)
-        if count % self.batch_size:
-            count += self.batch_size - self.batch_size % count
-        self.rng.choice(indices, count)
+        if count < self.batch_size:
+            count = self.batch_size
+        indices = self.rng.choice(indices, count)
         return imap(list, partition_all(self.batch_size, indices))
