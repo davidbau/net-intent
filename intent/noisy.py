@@ -282,6 +282,8 @@ class NoisyDataStreamMonitoring(DataStreamMonitoring):
             p.set_value(np.zeros(v.shape, dtype=v.dtype))
         value_dict = self._evaluator.evaluate(self.data_stream)
         self.add_records(self.main_loop.log, value_dict.items())
+        for (p, v) in saved:
+            p.set_value(v)
         logger.info("Monitoring on auxiliary data finished")
 
 
