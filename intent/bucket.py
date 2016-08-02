@@ -25,6 +25,7 @@ from blocks.extensions import FinishAfter, Timing, Printing, ProgressBar
 from blocks.extensions.monitoring import DataStreamMonitoring
 from blocks.extensions.saveload import Checkpoint
 from blocks.filter import VariableFilter
+from intent.noisy import NITS, NOISE
 from blocks.filter import get_brick
 from blocks.graph import ComputationGraph
 from blocks.initialization import Constant, Uniform
@@ -46,6 +47,7 @@ from intent.ablation import ConfusionImage
 from intent.ablation import Sum
 from intent.ablation import ablate_inputs
 from intent.lenet import create_lenet_5
+from intent.noisy import create_noisy_lenet_5
 from intent.maxact import MaximumActivationSearch
 from intent.filmstrip import Filmstrip
 from intent.scatter import Scatter
@@ -185,7 +187,7 @@ class BucketVisualizer:
         batch_size = 500
         image_size = (28, 28)
         output_size = 10
-        convnet = create_lenet_5()
+        convnet = create_noisy_lenet_5(batch_size)
         layers = convnet.layers
 
         x = tensor.tensor4('features')
@@ -224,6 +226,12 @@ class BucketVisualizer:
         # Load it with trained parameters
         params = load_parameters(open(save_to, 'rb'))
         model.set_parameter_values(params)
+
+        # Zero noise params
+        noise_parameters = VariableFilter(roles=[NOISE])(cg.parameters)
+        for p in noise_parameters:
+            v = p.get_value()
+            p.set_value(numpy.zeros(v.shape, dtype=v.dtype))
 
         mnist_test_stream = DataStream.default_stream(
             self.mnist_test,
