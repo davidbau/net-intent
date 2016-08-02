@@ -104,8 +104,8 @@ def main(save_to, num_epochs, regularization=1.0,
     algorithm = GradientDescent(
         cost=cost,
         parameters=trainable_parameters,
-        step_rule=AdaDelta(decay_rate=0.99))
-    #    step_rule=AdaDelta())
+    #    step_rule=AdaDelta(decay_rate=0.99))
+        step_rule=AdaDelta())
     #    theano_func_kwargs={'mode': NanGuardMode(
     #        nan_is_error=True, inf_is_error=False, big_is_error=False)})
 
