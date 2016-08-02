@@ -73,6 +73,7 @@ class UnitNoiseGenerator(Random):
 class NoiseExtension(SimpleExtension, RNGMixin):
     def __init__(self, noise_parameters=None, **kwargs):
         kwargs.setdefault("before_training", True)
+        kwargs.setdefault("after_training", True)
         self.noise_parameters = noise_parameters
         std = 1.0
         self.noise_init = IsotropicGaussian(std=std)
@@ -87,9 +88,16 @@ class NoiseExtension(SimpleExtension, RNGMixin):
     def do(self, callback_name, *args):
         self.parse_args(callback_name, args)
         if callback_name == 'before_training':
+            # Before training, intiaizlize noise
             for p in self.noise_parameters:
                 self.noise_init.initialize(p, self.rng)
+            # And set up update to change noise on every update
             self.main_loop.algorithm.add_updates(self.noise_updates)
+        if callback_name == 'after_training':
+            # After training, zero noise again.
+            for p in self.noise_parameters:
+                v = p.get_value()
+                p.set_value(np.zeros(v.shape, dtype=v.dtype))
 
 class NoisyLinear(Initializable, Feedforward, Random):
     """Linear transformation sent through a learned noisy channel.
