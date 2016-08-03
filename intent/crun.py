@@ -37,6 +37,7 @@ from intent.attrib import save_attributions
 from intent.ablation import ConfusionMatrix
 from intent.ablation import Sum
 from intent.flip import RandomFlip
+from intent.schedule import EpochSchedule
 import json
 from json import JSONEncoder, dumps
 import numpy
@@ -105,11 +106,12 @@ def main(save_to, num_epochs,
         iteration_scheme=ShuffledScheme(
             cifar10_test.num_examples, batch_size))
 
+    step_rule = Momentum(0.05, 0.1)
+
     # Train with simple SGD
     algorithm = GradientDescent(
         cost=train_cost, parameters=train_cg.parameters,
-        # step_rule=AdaDelta())
-        step_rule=Momentum(0.05, 0.1))
+        step_rule=step_rule)
 
     # `Timing` extension reports time for reading data, aggregating a batch
     # and monitoring;
@@ -117,6 +119,12 @@ def main(save_to, num_epochs,
     extensions = [Timing(),
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
+                  EpochSchedule(step_rule.learning_rate, [
+                      (200, 0.05),
+                      (250, 0.005),
+                      (300, 0.0005),
+                      (None, 0.00005)
+                  ]),
                   DataStreamMonitoring(
                       [test_cost, test_error_rate, test_confusion],
                       cifar10_test_stream,
