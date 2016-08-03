@@ -1,0 +1,126 @@
+"""Convolutional network example.
+
+Run the training for 50 epochs with
+```
+python __init__.py --num-epochs 50
+```
+It is going to reach around 0.8% error rate on the test set.
+
+"""
+
+
+from blocks.bricks import application
+from blocks.bricks import Brick
+from blocks.bricks import FeedforwardSequence
+from blocks.bricks import Initializable
+from blocks.bricks import MLP
+from blocks.bricks import Rectifier
+from blocks.bricks import Softmax
+from blocks.bricks.conv import Convolutional, ConvolutionalSequence
+from blocks.bricks.conv import Flattener, MaxPooling
+from blocks.initialization import Constant, Uniform, NdarrayInitialization
+import numpy
+import theano
+from toolz.itertoolz import interleave
+
+
+class GlobalAverageFlattener(Brick):
+    """Flattens the input by applying spatial averaging for each channel.
+    It may be used to pass multidimensional objects like images or feature
+    maps of convolutional bricks into bricks which allow only two
+    dimensional input (batch, features) like MLP.
+    """
+    @application(inputs=['input_'], outputs=['output'])
+    def apply(self, input_):
+        return input_.mean(axis=list(range(2, input_.ndim)))
+
+class HeInitialization(NdarrayInitialization):
+    """Initialize parameters from an isotropic Gaussian distribution.
+    Parameters
+    ----------
+    std : float, optional
+        The standard deviation of the Gaussian distribution. Defaults to 1.
+    mean : float, optional
+        The mean of the Gaussian distribution. Defaults to 0
+    Notes
+    -----
+    Be careful: the standard deviation goes first and the mean goes
+    second!
+    """
+    def __init__(self, gain=None):
+        self.gain = gain or numpy.sqrt(2)
+
+    def generate(self, rng, shape):
+        if len(shape) == 2:
+            fan_in = shape[0]
+        elif len(shape) > 2:
+            fan_in = numpy.prod(shape[1:])
+        std = self.gain * numpy.sqrt(1.0 / fan_in)
+        return rng.normal(0, std, size=shape).astype(theano.config.floatX)
+
+    def __repr__(self):
+        return repr_attrs(self, 'gain')
+
+class AllConvNet(FeedforwardSequence, Initializable):
+    def __init__(self, image_shape=None, output_size=None, **kwargs):
+        self.num_channels = 3
+        self.image_shape = image_shape or (27, 27)
+        self.output_size = output_size or 10
+        conv_parameters = [
+                (96, 3, 1, 'half'),
+                (96, 3, 1, 'half'),
+                (96, 3, 2, 'valid'),
+                (192, 3, 1, 'half'),
+                (192, 3, 1, 'half'),
+                (192, 3, 2, 'valid'),
+                (192, 3, 1, 'half'), 
+                (192, 1, 1, 'valid'), 
+                (10, 1, 1, 'valid')
+        ]
+        fc_layer = 10
+
+        self.convolutions = list([
+            Convolutional(filter_size=(filter_size, filter_size),
+                           num_filters=num_filters,
+                           step=(conv_step, conv_step),
+                           border_mode=border_mode,
+                           tied_biases=True,
+                           name='conv_{}'.format(i))
+             for i, (num_filters, filter_size, conv_step, border_mode)
+                 in enumerate(conv_parameters)])
+
+        self.conv_sequence = ConvolutionalSequence(list(interleave([
+            self.convolutions,
+            (Rectifier() for _ in self.convolutions)
+        ])), self.num_channels, self.image_shape)
+        
+        # The AllConvNet applies average pooling to combine top-level
+        # features across the image. 
+        self.flattener = GlobalAverageFlattener()
+
+        # Then it inserts one final 10-way FC layer before softmax
+        self.top_mlp = MLP([Rectifier(), Softmax()],
+            [conv_parameters[-1][0], fc_layer, self.output_size])
+
+        application_methods = [
+            self.conv_sequence.apply,
+            self.flattener.apply,
+            self.top_mlp.apply
+        ]
+
+        super(AllConvNet, self).__init__(application_methods, **kwargs)
+
+    @property
+    def output_dim(self):
+        return self.top_mlp_dims[-1]
+
+    @output_dim.setter
+    def output_dim(self, value):
+        self.top_mlp_dims[-1] = value
+
+def create_all_conv_net():
+    convnet = AllConvNet(
+                    weights_init=HeInitialization(),
+                    biases_init=Constant(0))
+    convnet.initialize()
+    return convnet
