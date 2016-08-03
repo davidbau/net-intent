@@ -19,6 +19,7 @@ from blocks.bricks import Softmax
 from blocks.bricks.conv import Convolutional, ConvolutionalSequence
 from blocks.bricks.conv import Flattener, MaxPooling
 from blocks.initialization import Constant, Uniform, NdarrayInitialization
+from blocks.initialization import IsotropicGaussian
 import numpy
 import theano
 from toolz.itertoolz import interleave
@@ -99,13 +100,14 @@ class AllConvNet(FeedforwardSequence, Initializable):
         self.flattener = GlobalAverageFlattener()
 
         # Then it inserts one final 10-way FC layer before softmax
-        self.top_mlp = MLP([Rectifier(), Softmax()],
-            [conv_parameters[-1][0], fc_layer, self.output_size])
+        # self.top_mlp = MLP([Rectifier(), Softmax()],
+        #     [conv_parameters[-1][0], fc_layer, self.output_size])
+        self.top_softmax = Softmax()
 
         application_methods = [
             self.conv_sequence.apply,
             self.flattener.apply,
-            self.top_mlp.apply
+            self.top_softmax.apply
         ]
 
         super(AllConvNet, self).__init__(application_methods, **kwargs)
@@ -120,7 +122,8 @@ class AllConvNet(FeedforwardSequence, Initializable):
 
 def create_all_conv_net():
     convnet = AllConvNet(
-                    weights_init=HeInitialization(),
+                    #weights_init=HeInitialization(),
+                    weights_init=IsotropicGaussian(0.05),
                     biases_init=Constant(0))
     convnet.initialize()
     return convnet

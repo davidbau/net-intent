@@ -45,8 +45,7 @@ import numpy
 
 def main(save_to, num_epochs,
          regularization=0.001, subset=None, num_batches=None,
-         histogram=None, resume=False):
-    batch_size = 500
+         batch_size=None, histogram=None, resume=False):
     output_size = 10
     convnet = create_all_conv_net()
 
@@ -95,7 +94,10 @@ def main(save_to, num_epochs,
     cifar10_train_stream = RandomFlip(RandomFixedSizeCrop(
         DataStream.default_stream(
             cifar10_train, iteration_scheme=ShuffledScheme(
-                cifar10_train.num_examples, batch_size)), (27, 27)))
+                cifar10_train.num_examples, batch_size)),
+        (27, 27),
+        which_sources=('features',)),
+        which_sources=('features',))
 
     cifar10_test = CIFAR10(("test",))
     cifar10_test_stream = DataStream.default_stream(
@@ -106,7 +108,8 @@ def main(save_to, num_epochs,
     # Train with simple SGD
     algorithm = GradientDescent(
         cost=train_cost, parameters=train_cg.parameters,
-        step_rule=AdaDelta())
+        # step_rule=AdaDelta())
+        step_rule=Momentum(0.05, 0.1))
 
     # `Timing` extension reports time for reading data, aggregating a batch
     # and monitoring;
@@ -168,8 +171,10 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     parser = ArgumentParser("An example of training a convolutional network "
                             "on the CIFAR dataset.")
-    parser.add_argument("--num-epochs", type=int, default=5,
+    parser.add_argument("--num-epochs", type=int, default=350,
                         help="Number of training epochs to do.")
+    parser.add_argument("--batch-size", type=int, default=16,
+                        help="Number of training examples per minibatch.")
     parser.add_argument("--histogram", help="histogram file")
     parser.add_argument("save_to", default="cifar10.tar", nargs="?",
                         help="Destination to save the state of the training "
