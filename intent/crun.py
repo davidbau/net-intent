@@ -38,6 +38,7 @@ from intent.attrib import save_attributions
 from intent.ablation import ConfusionMatrix
 from intent.ablation import Sum
 from intent.transform import RandomFlip
+from intent.transform import RandomPadCropFlip
 from intent.transform import NormalizeBatchLevels
 from intent.schedule import EpochSchedule
 import json
@@ -98,14 +99,12 @@ def main(save_to, num_epochs,
     train_cost.name = 'cost_with_regularization'
 
     cifar10_train = CIFAR10(("train",))
-    cifar10_train_stream = RandomFlip(RandomFixedSizeCrop(
+    cifar10_train_stream = RandomPadCropFlip(
         NormalizeBatchLevels(DataStream.default_stream(
             cifar10_train, iteration_scheme=ShuffledScheme(
                 cifar10_train.num_examples, batch_size)),
         which_sources=('features',)),
-        (27, 27),
-        which_sources=('features',)),
-        which_sources=('features',))
+        (32, 32), pad=5, which_sources=('features',))
 
     test_batch_size = 500
     cifar10_test = CIFAR10(("test",))
@@ -146,7 +145,7 @@ def main(save_to, num_epochs,
                       prefix="train",
                       every_n_batches=100,
                       after_epoch=True),
-                  Plot('Training performance',
+                  Plot('Training performance for ' + save_to,
                       channels=[
                           ['train_cost_with_regularization',
                            'train_cost_without_regularization',
@@ -155,7 +154,7 @@ def main(save_to, num_epochs,
                           ['train_total_gradient_norm'],
                       ],
                       every_n_batches=100),
-                  Plot('Test performance',
+                  Plot('Test performance for ' + save_to,
                       channels=[[
                           'train_error_rate',
                           'test_error_rate',
@@ -211,7 +210,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=64,
                         help="Number of training examples per minibatch.")
     parser.add_argument("--histogram", help="histogram file")
-    parser.add_argument("save_to", default="cifar10.tar", nargs="?",
+    parser.add_argument("save_to", default="cifar10-pad.tar", nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
     parser.add_argument('--regularization', type=float, default=0.001,
