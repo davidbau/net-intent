@@ -9,6 +9,7 @@ class EpochSchedule(SimpleExtension):
 
     def do(self, which_callback, *args):
         epochs_done = self.main_loop.log.status['epochs_done']
-        for end, value in self.schedule:
-            if epochs_done < end or end is None:
-                return value
+        for begin, value in self.schedule:
+            if epochs_done >= begin:
+                self.parameter.set_value(value)
+                return

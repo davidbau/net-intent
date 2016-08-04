@@ -121,10 +121,9 @@ def main(save_to, num_epochs,
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
                   EpochSchedule(step_rule.learning_rate, [
-                      (200, 0.05),
-                      (250, 0.005),
-                      (300, 0.0005),
-                      (None, 0.00005)
+                      (200, 0.005),
+                      (250, 0.0005),
+                      (300, 0.00005)
                   ]),
                   DataStreamMonitoring(
                       [test_cost, test_error_rate, test_confusion],
@@ -132,6 +131,7 @@ def main(save_to, num_epochs,
                       prefix="test"),
                   TrainingDataMonitoring(
                       [train_cost, train_error_rate, l2_norm,
+                       step_rule.learning_rate,
                        aggregation.mean(algorithm.total_gradient_norm)],
                       prefix="train",
                       after_epoch=True),
