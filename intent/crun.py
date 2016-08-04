@@ -26,6 +26,7 @@ from blocks.model import Model
 from blocks.monitoring import aggregation
 from blocks.roles import WEIGHT
 from blocks.roles import OUTPUT
+from blocks_extras.extensions.plot import Plot  
 from fuel.datasets import CIFAR10
 from fuel.schemes import ShuffledScheme
 from fuel.streams import DataStream
@@ -137,6 +138,20 @@ def main(save_to, num_epochs,
                        step_rule.learning_rate,
                        aggregation.mean(algorithm.total_gradient_norm)],
                       prefix="train",
+                      after_batch=True),
+                  Plot('Training performance',
+                      channels=[
+                          ['train_cost_with_regularization'],
+                          ['train_error_rate'],
+                          ['train_l2_norm'],
+                          ['train_total_gradient_norm'],
+                      ],
+                      after_batch=True),
+                  Plot('Test performance',
+                      channels=[[
+                          'train_error_rate',
+                          'test_error_rate',
+                          ]],
                       after_epoch=True),
                   Checkpoint(save_to),
                   ProgressBar(),
