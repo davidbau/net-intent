@@ -36,7 +36,8 @@ from intent.attrib import print_attributions
 from intent.attrib import save_attributions
 from intent.ablation import ConfusionMatrix
 from intent.ablation import Sum
-from intent.flip import RandomFlip
+from intent.transform import RandomFlip
+from intent.transform import NormalizeBatchLevels
 from intent.schedule import EpochSchedule
 import json
 from json import JSONEncoder, dumps
@@ -93,19 +94,21 @@ def main(save_to, num_epochs,
 
     cifar10_train = CIFAR10(("train",))
     cifar10_train_stream = RandomFlip(RandomFixedSizeCrop(
-        DataStream.default_stream(
+        NormalizeBatchLevels(DataStream.default_stream(
             cifar10_train, iteration_scheme=ShuffledScheme(
                 cifar10_train.num_examples, batch_size)),
+        which_sources=('features',)),
         (27, 27),
         which_sources=('features',)),
         which_sources=('features',))
 
     test_batch_size = 500
     cifar10_test = CIFAR10(("test",))
-    cifar10_test_stream = DataStream.default_stream(
+    cifar10_test_stream = NormalizeBatchLevels(DataStream.default_stream(
         cifar10_test,
         iteration_scheme=ShuffledScheme(
-            cifar10_test.num_examples, test_batch_size))
+            cifar10_test.num_examples, test_batch_size)),
+        which_sources=('features',))
 
     step_rule = Momentum(0.05, 0.1)
 

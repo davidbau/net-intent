@@ -49,3 +49,24 @@ class RandomFlip(SourcewiseTransformer, ExpectsAxisLabels):
             return example[:,:,::-1]
         else:
             return example
+
+class NormalizeBatchLevels(SourcewiseTransformer, ExpectsAxisLabels):
+
+    def __init__(self, data_stream, **kwargs):
+        self.warned_axis_labels = False
+        kwargs.setdefault('produces_examples', False)
+        kwargs.setdefault('axis_labels', data_stream.axis_labels)
+        super(NormalizeBatchLevels, self).__init__(data_stream, **kwargs)
+
+    def transform_source_batch(self, source, source_name):
+        self.verify_axis_labels(('batch', 'channel', 'height', 'width'),
+                                self.data_stream.axis_labels[source_name],
+                                source_name)
+        if isinstance(source, numpy.ndarray) and source.ndim == 4:
+            mean_levels = source.mean(axis=(0, 2, 3), keepdims=True)
+            zeroed = source - mean_levels
+            std = zeroed.std(axis=(0, 2, 3), keepdims=True)
+            return zeroed / std
+        else:
+            raise ValueError("uninterpretable batch format; expected an "
+                             "array with ndim = 4")
