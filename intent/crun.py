@@ -100,11 +100,12 @@ def main(save_to, num_epochs,
         which_sources=('features',)),
         which_sources=('features',))
 
+    test_batch_size = 500
     cifar10_test = CIFAR10(("test",))
     cifar10_test_stream = DataStream.default_stream(
         cifar10_test,
         iteration_scheme=ShuffledScheme(
-            cifar10_test.num_examples, batch_size))
+            cifar10_test.num_examples, test_batch_size))
 
     step_rule = Momentum(0.05, 0.1)
 
@@ -181,7 +182,7 @@ if __name__ == "__main__":
                             "on the CIFAR dataset.")
     parser.add_argument("--num-epochs", type=int, default=350,
                         help="Number of training epochs to do.")
-    parser.add_argument("--batch-size", type=int, default=16,
+    parser.add_argument("--batch-size", type=int, default=64,
                         help="Number of training examples per minibatch.")
     parser.add_argument("--histogram", help="histogram file")
     parser.add_argument("save_to", default="cifar10.tar", nargs="?",
