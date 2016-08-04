@@ -9,7 +9,7 @@ class EpochSchedule(SimpleExtension):
 
     def do(self, which_callback, *args):
         epochs_done = self.main_loop.log.status['epochs_done']
-        for begin, value in self.schedule:
+        for begin, value in reversed(self.schedule):
             if epochs_done >= begin:
                 self.parameter.set_value(value)
                 return
