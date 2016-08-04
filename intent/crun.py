@@ -72,7 +72,7 @@ def main(save_to, num_epochs,
     # Apply dropout to all layer outputs except final softmax
     dropout_vars = VariableFilter(
             roles=[OUTPUT], bricks=[Convolutional, Linear],
-            theano_name_regex="^conv_[35]_apply_output$")(test_cg.variables)
+            theano_name_regex="^conv_[25]_apply_output$")(test_cg.variables)
 
     # Apply 0.5 dropout to the post-pooling layers
     drop_cg = apply_dropout(test_cg, dropout_vars, 0.5)
@@ -86,10 +86,14 @@ def main(save_to, num_epochs,
     weights = VariableFilter(roles=[WEIGHT])(train_cg.variables)
     l2_norm = sum([(W ** 2).sum() for W in weights])
     l2_norm.name = 'l2_norm'
-    test_cost = test_cost + regularization * l2_norm
+    l2_regularization = regularization * l2_norm
+    l2_regularization.name = 'l2_regularization'
+    test_cost = test_cost + l2_regularization
     test_cost.name = 'cost_with_regularization'
 
     # Training version of cost
+    train_cost_without_regularization = train_cost
+    train_cost_without_regularization.name = 'cost_without_regularization'
     train_cost = train_cost + regularization * l2_norm
     train_cost.name = 'cost_with_regularization'
 
@@ -134,19 +138,23 @@ def main(save_to, num_epochs,
                       cifar10_test_stream,
                       prefix="test"),
                   TrainingDataMonitoring(
-                      [train_cost, train_error_rate, l2_norm,
+                      [train_cost, train_error_rate,
+                       train_cost_without_regularization,
+                       l2_regularization,
                        step_rule.learning_rate,
                        aggregation.mean(algorithm.total_gradient_norm)],
                       prefix="train",
-                      after_batch=True),
+                      every_n_batches=100,
+                      after_epoch=True),
                   Plot('Training performance',
                       channels=[
-                          ['train_cost_with_regularization'],
+                          ['train_cost_with_regularization',
+                           'train_cost_without_regularization',
+                           'train_l2_regularization'],
                           ['train_error_rate'],
-                          ['train_l2_norm'],
                           ['train_total_gradient_norm'],
                       ],
-                      after_batch=True),
+                      every_n_batches=100),
                   Plot('Test performance',
                       channels=[[
                           'train_error_rate',
