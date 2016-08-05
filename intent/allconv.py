@@ -1,11 +1,11 @@
-"""Convolutional network example.
+"""All convolutional network.
 
-Run the training for 50 epochs with
-```
-python __init__.py --num-epochs 50
-```
-It is going to reach around 0.8% error rate on the test set.
+Modeled after ALL-CNN-C from "Striving for Simplicity: The All
+Convolutional Net" paper by Springenberg, Dosovitskiy, Brox, Riedmiller.
+https://arxiv.org/pdf/1412.6806.pdf
 
+Details also from Nervana's code at
+https://github.com/NervanaSystems/neon/blob/master/examples/cifar10_allcnn.py
 """
 
 
@@ -70,10 +70,10 @@ class AllConvNet(FeedforwardSequence, Initializable):
         conv_parameters = [
                 (96, 3, 1, 'half'),
                 (96, 3, 1, 'half'),
-                (96, 3, 2, 'valid'),
+                (96, 3, 2, 'half'),
                 (192, 3, 1, 'half'),
                 (192, 3, 1, 'half'),
-                (192, 3, 2, 'valid'),
+                (192, 3, 2, 'half'),
                 (192, 3, 1, 'half'), 
                 (192, 1, 1, 'valid'), 
                 (10, 1, 1, 'valid')

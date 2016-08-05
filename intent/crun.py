@@ -74,14 +74,16 @@ def main(save_to, num_epochs,
 
     # Apply dropout to all layer outputs except final softmax
     dropout_vars = VariableFilter(
-            roles=[OUTPUT], bricks=[Convolutional, Linear],
-            theano_name_regex="^conv_[258]_apply_output$")(test_cg.variables)
-
-    # Apply 0.5 dropout to the post-pooling layers
+            roles=[OUTPUT], bricks=[Convolutional],
+            theano_name_regex="^conv_[25]_apply_output$")(test_cg.variables)
     drop_cg = apply_dropout(test_cg, dropout_vars, 0.5)
 
-    # Do not apply 0.2 dropout to the input
-    train_cg = drop_cg # apply_dropout(drop_cg, [x], 0.2)
+    # Apply 0.2 dropout to the pre-averaging layer
+    # dropout_vars_2 = VariableFilter(
+    #         roles=[OUTPUT], bricks=[Convolutional],
+    #         theano_name_regex="^conv_8_apply_output$")(test_cg.variables)
+    # train_cg = apply_dropout(test_cg, dropout_vars_2, 0.2)
+    train_cg = drop_cg
 
     train_cost, train_error_rate, train_components = train_cg.outputs
 
@@ -217,7 +219,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=64,
                         help="Number of training examples per minibatch.")
     parser.add_argument("--histogram", help="histogram file")
-    parser.add_argument("save_to", default="cifar10-he.tar", nargs="?",
+    parser.add_argument("save_to", default="cifar10-25h.tar", nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
     parser.add_argument('--regularization', type=float, default=0.001,
