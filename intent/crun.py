@@ -120,13 +120,13 @@ def main(save_to, num_epochs,
     momentum = Momentum(0.05, 0.1)
 
     # Create a step rule that doubles the learning rate of biases, like Caffe.
-    scale_bias = Restrict(Scale(2), biases)
-    step_rule = CompositeRule([scale_bias, momentum])
+    # scale_bias = Restrict(Scale(2), biases)
+    # step_rule = CompositeRule([scale_bias, momentum])
 
     # Train with simple SGD
     algorithm = GradientDescent(
         cost=train_cost, parameters=train_cg.parameters,
-        step_rule=step_rule)
+        step_rule=momentum)
 
     # `Timing` extension reports time for reading data, aggregating a batch
     # and monitoring;
@@ -217,7 +217,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=64,
                         help="Number of training examples per minibatch.")
     parser.add_argument("--histogram", help="histogram file")
-    parser.add_argument("save_to", default="cifar10-b2.tar", nargs="?",
+    parser.add_argument("save_to", default="cifar10-he.tar", nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
     parser.add_argument('--regularization', type=float, default=0.001,
