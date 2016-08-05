@@ -7,6 +7,7 @@ from argparse import ArgumentParser
 from theano import tensor
 
 from blocks.algorithms import Scale, AdaDelta, GradientDescent, Momentum
+from blocks.algorithms import CompositeRule, Restrict
 from blocks.bricks import Rectifier
 from blocks.bricks import Activation
 from blocks.bricks import Softmax
@@ -24,6 +25,7 @@ from blocks.initialization import Constant, Uniform
 from blocks.main_loop import MainLoop
 from blocks.model import Model
 from blocks.monitoring import aggregation
+from blocks.roles import BIAS
 from blocks.roles import WEIGHT
 from blocks.roles import OUTPUT
 from blocks_extras.extensions.plot import Plot  
@@ -84,6 +86,7 @@ def main(save_to, num_epochs,
     train_cost, train_error_rate, train_components = train_cg.outputs
 
     # Apply regularization to the cost
+    biases = VariableFilter(roles=[BIAS])(train_cg.parameters)
     weights = VariableFilter(roles=[WEIGHT])(train_cg.variables)
     l2_norm = sum([(W ** 2).sum() for W in weights])
     l2_norm.name = 'l2_norm'
@@ -114,7 +117,11 @@ def main(save_to, num_epochs,
             cifar10_test.num_examples, test_batch_size)),
         which_sources=('features',))
 
-    step_rule = Momentum(0.05, 0.1)
+    momentum = Momentum(0.05, 0.1)
+
+    # Create a step rule that doubles the learning rate of biases, like Caffe.
+    scale_bias = Restrict(Scale(2), biases)
+    step_rule = CompositeRule([scale_bias, momentum])
 
     # Train with simple SGD
     algorithm = GradientDescent(
@@ -127,7 +134,7 @@ def main(save_to, num_epochs,
     extensions = [Timing(),
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
-                  EpochSchedule(step_rule.learning_rate, [
+                  EpochSchedule(momentum.learning_rate, [
                       (200, 0.005),
                       (250, 0.0005),
                       (300, 0.00005)
@@ -140,7 +147,7 @@ def main(save_to, num_epochs,
                       [train_cost, train_error_rate,
                        train_cost_without_regularization,
                        l2_regularization,
-                       step_rule.learning_rate,
+                       momentum.learning_rate,
                        aggregation.mean(algorithm.total_gradient_norm)],
                       prefix="train",
                       every_n_batches=100,
@@ -210,7 +217,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=64,
                         help="Number of training examples per minibatch.")
     parser.add_argument("--histogram", help="histogram file")
-    parser.add_argument("save_to", default="cifar10-do258.tar", nargs="?",
+    parser.add_argument("save_to", default="cifar10-b2.tar", nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
     parser.add_argument('--regularization', type=float, default=0.001,
