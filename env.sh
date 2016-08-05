@@ -17,6 +17,16 @@ command -v pip3 >/dev/null 2>&1 || { \
   echo >&2 "pip3 is required"; sudo apt-get install python3-pip; }
 python3 -c 'import ensurepip' >/dev/null 2>&1 || { \
   echo >&2 "python3-venv is required"; sudo apt-get install python3.4-venv; }
+pkg-config --modversion libpng > /dev/null 2>&1 || { \
+  echo >&2 "libpng is required"; sudo apt-get install libpng12-dev; }
+test -e /usr/include/freetype2/ft2build.h || { \
+  echo >&2 "libfreetype is required"; sudo apt-get install libfreetype6-dev; }
+test -e /usr/include/jpeglib.h || { \
+  echo >&2 "libjpeg is required"; sudo apt-get install libjpeg-dev; }
+test -e /usr/lib/liblapack.so || { \
+  echo >&2 "liblapack is required"; sudo apt-get install liblapack-dev; }
+test -e /usr/include/hdf5.h || { \
+  echo >&2 "libhdf5 is required"; sudo apt-get install libhdf5-dev; }
 
 rm -rf env
 python3 -m venv env
