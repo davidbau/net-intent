@@ -122,8 +122,8 @@ class AllConvNet(FeedforwardSequence, Initializable):
 
 def create_all_conv_net():
     convnet = AllConvNet(
-                    #weights_init=HeInitialization(),
-                    weights_init=IsotropicGaussian(0.05),
+                    weights_init=HeInitialization(),
+                    # weights_init=IsotropicGaussian(0.05),
                     biases_init=Constant(0))
     convnet.initialize()
     return convnet
