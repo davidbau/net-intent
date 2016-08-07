@@ -155,14 +155,15 @@ class ResNet(FeedforwardSequence, Initializable):
         num_filters = [16, 32, 64]
         num_channels = num_filters[0]
         self.convolutions = [
-                Convolutional(
+            Convolutional(
                     filter_size=(3, 3),
-                    num_channels = self.num_channels,
                     num_filters=num_channels,
                     step=(1, 1),
                     border_mode='half',
                     tied_biases=True,
-                    name='conv_0')
+                    name='conv_0'),
+            SpatialBatchNormalization(name='bn_0'),
+            Rectifier(name='relu_0')
         ]
         for num in num_filters:
             for i in range(n):
@@ -170,7 +171,8 @@ class ResNet(FeedforwardSequence, Initializable):
                     filter_size=(3, 3),
                     num_filters=num,
                     num_channels=num_channels,
-                    step=(1, 1) if i < n - 1 else (2, 2)
+                    step=(1, 1) if i < n - 1 else (2, 2),
+                    name='group_%d_%d' % (num, i)
                 ))
                 num_channels = num
 
