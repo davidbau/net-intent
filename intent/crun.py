@@ -8,6 +8,7 @@ from theano import tensor
 
 from blocks.algorithms import Scale, AdaDelta, GradientDescent, Momentum
 from blocks.algorithms import CompositeRule, Restrict
+from blocks.algorithms import StepClipping
 from blocks.bricks import Rectifier
 from blocks.bricks import Activation
 from blocks.bricks import Softmax
@@ -82,8 +83,11 @@ def main(save_to, num_epochs,
     # dropout_vars_2 = VariableFilter(
     #         roles=[OUTPUT], bricks=[Convolutional],
     #         theano_name_regex="^conv_8_apply_output$")(test_cg.variables)
-    # train_cg = apply_dropout(test_cg, dropout_vars_2, 0.2)
-    train_cg = drop_cg
+    train_cg = apply_dropout(test_cg, dropout_vars_2, 0.2)
+
+    # Apply 0.2 dropout to the input, as in the paper
+    # train_cg = apply_dropout(test_cg, [x], 0.2)
+    # train_cg = drop_cg
 
     train_cost, train_error_rate, train_components = train_cg.outputs
 
@@ -124,11 +128,12 @@ def main(save_to, num_epochs,
     # Create a step rule that doubles the learning rate of biases, like Caffe.
     # scale_bias = Restrict(Scale(2), biases)
     # step_rule = CompositeRule([scale_bias, momentum])
+    step_rule = CompositeRule([StepClipping(10), momentum])
 
     # Train with simple SGD
     algorithm = GradientDescent(
         cost=train_cost, parameters=train_cg.parameters,
-        step_rule=momentum)
+        step_rule=step_rule)
 
     # `Timing` extension reports time for reading data, aggregating a batch
     # and monitoring;
@@ -219,7 +224,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=64,
                         help="Number of training examples per minibatch.")
     parser.add_argument("--histogram", help="histogram file")
-    parser.add_argument("save_to", default="cifar10-25h.tar", nargs="?",
+    parser.add_argument("save_to", default="cifar10-2582.tar", nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
     parser.add_argument('--regularization', type=float, default=0.001,
