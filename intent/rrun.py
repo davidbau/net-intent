@@ -106,7 +106,7 @@ def main(save_to, num_epochs,
     train_cg = ComputationGraph([train_cost,
                 train_error_rate, train_components])
     population_updates = get_batch_normalization_updates(train_cg)
-    bn_alpha = 0.95
+    bn_alpha = 0.9
     extra_updates = [(p, m * bn_alpha + p * (1 - bn_alpha))
                 for p, m in population_updates]
 
@@ -132,7 +132,7 @@ def main(save_to, num_epochs,
             cifar10_train, iteration_scheme=ShuffledScheme(
                 cifar10_train.num_examples, batch_size)),
         which_sources=('features',)),
-        (32, 32), pad=5, which_sources=('features',))
+        (32, 32), pad=4, which_sources=('features',))
 
     test_batch_size = 500
     cifar10_test = CIFAR10(("test",))
@@ -168,9 +168,10 @@ def main(save_to, num_epochs,
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
                   EpochSchedule(momentum.learning_rate, [
-                      (200, 0.01),
-                      (225, 0.001),
-                      (250, 0.0001)
+                      (100, 0.01),
+                      (150, 0.001)
+                      # (83, 0.01),
+                      # (125, 0.001)
                   ]),
                   DataStreamMonitoring(
                       [test_cost, test_error_rate, test_confusion],
@@ -183,7 +184,7 @@ def main(save_to, num_epochs,
                        momentum.learning_rate,
                        aggregation.mean(algorithm.total_gradient_norm)],
                       prefix="train",
-                      every_n_batches=4),
+                      every_n_batches=17),
                       # after_epoch=True),
                   Plot('Training performance for ' + save_to,
                       channels=[
@@ -193,7 +194,7 @@ def main(save_to, num_epochs,
                           ['train_error_rate'],
                           ['train_total_gradient_norm'],
                       ],
-                      every_n_batches=4),
+                      every_n_batches=17),
                   Plot('Test performance for ' + save_to,
                       channels=[[
                           'train_error_rate',
@@ -245,12 +246,13 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     parser = ArgumentParser("An example of training a convolutional network "
                             "on the CIFAR dataset.")
-    parser.add_argument("--num-epochs", type=int, default=275,
+    parser.add_argument("--num-epochs", type=int, default=200,
                         help="Number of training epochs to do.")
-    parser.add_argument("--batch-size", type=int, default=256,
+    parser.add_argument("--batch-size", type=int, default=128,
                         help="Number of training examples per minibatch.")
     parser.add_argument("--histogram", help="histogram file")
-    parser.add_argument("save_to", default="cifar10-resnet0b200.tar", nargs="?",
+    parser.add_argument("save_to", default="cifar10-resnet-128-200.tar",
+                        nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
     parser.add_argument('--regularization', type=float, default=0.001,
