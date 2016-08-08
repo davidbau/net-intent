@@ -23,6 +23,7 @@ from blocks.initialization import IsotropicGaussian
 import numpy
 import theano
 from toolz.itertoolz import interleave
+from intent.noisy import NoisyConvolutional
 
 
 class GlobalAverageFlattener(Brick):
@@ -65,7 +66,7 @@ class HeInitialization(NdarrayInitialization):
 class AllConvNet(FeedforwardSequence, Initializable):
     def __init__(self, image_shape=None, output_size=None, **kwargs):
         self.num_channels = 3
-        self.image_shape = image_shape or (27, 27)
+        self.image_shape = image_shape or (32, 32)
         self.output_size = output_size or 10
         conv_parameters = [
                 (96, 3, 1, 'half'),
@@ -74,8 +75,8 @@ class AllConvNet(FeedforwardSequence, Initializable):
                 (192, 3, 1, 'half'),
                 (192, 3, 1, 'half'),
                 (192, 3, 2, 'half'),
-                (192, 3, 1, 'half'), 
-                (192, 1, 1, 'valid'), 
+                (192, 3, 1, 'half'),
+                (192, 1, 1, 'valid'),
                 (10, 1, 1, 'valid')
         ]
         fc_layer = 10
@@ -94,9 +95,9 @@ class AllConvNet(FeedforwardSequence, Initializable):
             self.convolutions,
             (Rectifier() for _ in self.convolutions)
         ])), self.num_channels, self.image_shape)
-        
+
         # The AllConvNet applies average pooling to combine top-level
-        # features across the image. 
+        # features across the image.
         self.flattener = GlobalAverageFlattener()
 
         # Then it inserts one final 10-way FC layer before softmax
@@ -125,5 +126,77 @@ def create_all_conv_net():
                     weights_init=HeInitialization(),
                     # weights_init=IsotropicGaussian(0.05),
                     biases_init=Constant(0))
+    convnet.initialize()
+    return convnet
+
+class NoisyAllConvNet(FeedforwardSequence, Initializable):
+    def __init__(self, image_shape=None, output_size=None,
+            noise_batch_size=None, **kwargs):
+        self.num_channels = 3
+        self.image_shape = image_shape or (32, 32)
+        self.output_size = output_size or 10
+        self.noise_batch_size = noise_batch_size
+        conv_parameters = [
+                (96, 3, 1, 'half', Convolutional),
+                (96, 3, 1, 'half', Convolutional),
+                (96, 3, 2, 'half', NoisyConvolutional),
+                (192, 3, 1, 'half', Convolutional),
+                (192, 3, 1, 'half', Convolutional),
+                (192, 3, 2, 'half', NoisyConvolutional),
+                (192, 3, 1, 'half', Convolutional),
+                (192, 1, 1, 'valid', Convolutional),
+                (10, 1, 1, 'valid', NoisyConvolutional)
+        ]
+        fc_layer = 10
+
+        self.convolutions = []
+        for i, (num_filters, filter_size, conv_step, border_mode, cls
+                ) in enumerate(conv_parameters):
+            layer = cls(filter_size=(filter_size, filter_size),
+                           num_filters=num_filters,
+                           step=(conv_step, conv_step),
+                           border_mode=border_mode,
+                           tied_biases=True,
+                           name='conv_{}'.format(i))
+            if cls == NoisyConvolutional:
+                layer.noise_batch_size = self.noise_batch_size
+            self.convolutions.append(layer)
+
+        self.conv_sequence = ConvolutionalSequence(list(interleave([
+            self.convolutions,
+            (Rectifier() for _ in self.convolutions)
+        ])), self.num_channels, image_size=self.image_shape)
+
+        # The AllConvNet applies average pooling to combine top-level
+        # features across the image.
+        self.flattener = GlobalAverageFlattener()
+
+        # Then it inserts one final 10-way FC layer before softmax
+        # self.top_mlp = MLP([Rectifier(), Softmax()],
+        #     [conv_parameters[-1][0], fc_layer, self.output_size])
+        self.top_softmax = Softmax()
+
+        application_methods = [
+            self.conv_sequence.apply,
+            self.flattener.apply,
+            self.top_softmax.apply
+        ]
+
+        super(NoisyAllConvNet, self).__init__(application_methods, **kwargs)
+
+    @property
+    def output_dim(self):
+        return self.top_mlp_dims[-1]
+
+    @output_dim.setter
+    def output_dim(self, value):
+        self.top_mlp_dims[-1] = value
+
+def create_noisy_all_conv_net(noise_batch_size):
+    convnet = NoisyAllConvNet(
+                    weights_init=HeInitialization(),
+                    # weights_init=IsotropicGaussian(0.05),
+                    biases_init=Constant(0),
+                    noise_batch_size=noise_batch_size)
     convnet.initialize()
     return convnet

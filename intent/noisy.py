@@ -112,8 +112,8 @@ class NoisyLinear(Initializable, Feedforward, Random):
         The number of linear functions. Required by
         :meth:`~.Brick.allocate`.
     """
-    @lazy(allocation=['input_dim', 'output_dim', 'batch_size'])
-    def __init__(self, input_dim, output_dim, batch_size,
+    @lazy(allocation=['input_dim', 'output_dim', 'noise_batch_size'])
+    def __init__(self, input_dim, output_dim, noise_batch_size,
             prior_mean=0, prior_noise_level=0, **kwargs):
         self.linear = Linear()
         self.mask = Linear(name='mask')
@@ -123,7 +123,7 @@ class NoisyLinear(Initializable, Feedforward, Random):
 
         self.input_dim = input_dim
         self.output_dim = output_dim
-        self.batch_size = batch_size
+        self.noise_batch_size = noise_batch_size
         self.prior_mean = prior_mean
         self.prior_noise_level = prior_noise_level
 
@@ -134,7 +134,8 @@ class NoisyLinear(Initializable, Feedforward, Random):
         self.mask.output_dim = self.output_dim
 
     def _allocate(self):
-        N = shared_floatx_zeros((self.batch_size, self.output_dim), name='N')
+        N = shared_floatx_zeros(
+                (self.noise_batch_size, self.output_dim), name='N')
         add_role(N, NOISE)
         self.parameters.append(N)
 
@@ -184,8 +185,8 @@ class NoisyConvolutional(Initializable, Feedforward, Random):
     Parameters (same as Convolutional)
     """
     @lazy(allocation=[
-        'filter_size', 'num_filters', 'num_channels', 'batch_size'])
-    def __init__(self, filter_size, num_filters, num_channels, batch_size,
+        'filter_size', 'num_filters', 'num_channels', 'noise_batch_size'])
+    def __init__(self, filter_size, num_filters, num_channels, noise_batch_size,
                  image_size=(None, None), step=(1, 1), border_mode='valid',
                  tied_biases=True,
                  prior_mean=0, prior_noise_level=0, **kwargs):
@@ -197,7 +198,7 @@ class NoisyConvolutional(Initializable, Feedforward, Random):
         self.filter_size = filter_size
         self.num_filters = num_filters
         self.num_channels = num_channels
-        self.batch_size = batch_size
+        self.noise_batch_size = noise_batch_size
         self.image_size = image_size
         self.step = step
         self.border_mode = border_mode
@@ -225,7 +226,7 @@ class NoisyConvolutional(Initializable, Feedforward, Random):
 
     def _allocate(self):
         out_shape = self.convolution.get_dim('output')
-        N = shared_floatx_zeros((self.batch_size,) + out_shape, name='N')
+        N = shared_floatx_zeros((self.noise_batch_size,) + out_shape, name='N')
         add_role(N, NOISE)
         self.parameters.append(N)
 
@@ -241,6 +242,8 @@ class NoisyConvolutional(Initializable, Feedforward, Random):
         output : :class:`~tensor.TensorVariable`
             The transformed input
         """
+        from theano.printing import Print
+
         pre_noise = self.convolution.apply(input_)
         # noise_level = self.mask.apply(input_)
         noise_level = tensor.clip(self.mask.apply(pre_noise), -16, 16)
@@ -331,7 +334,8 @@ class NoisyLeNet(FeedforwardSequence, Initializable):
         Border mode of convolution (similar for all layers).
 
     """
-    def __init__(self, conv_activations, num_channels, image_shape, batch_size,
+    def __init__(self, conv_activations, num_channels, image_shape,
+                 noise_batch_size,
                  filter_sizes, feature_maps, pooling_sizes,
                  top_mlp_activations, top_mlp_dims,
                  conv_step=None, border_mode='valid',
@@ -342,7 +346,7 @@ class NoisyLeNet(FeedforwardSequence, Initializable):
             self.conv_step = conv_step
         self.num_channels = num_channels
         self.image_shape = image_shape
-        self.batch_size = batch_size
+        self.noise_batch_size = noise_batch_size
         self.top_mlp_activations = top_mlp_activations
         self.top_mlp_dims = top_mlp_dims
         self.border_mode = border_mode
@@ -357,6 +361,7 @@ class NoisyLeNet(FeedforwardSequence, Initializable):
                            step=self.conv_step,
                            border_mode=self.border_mode,
                            tied_biases=self.tied_biases,
+                           noise_batch_size=self.noise_batch_size,
                            name='conv_{}'.format(i))
              for i, (filter_size, num_filter)
              in enumerate(conv_parameters)),
@@ -366,13 +371,12 @@ class NoisyLeNet(FeedforwardSequence, Initializable):
 
         self.conv_sequence = ConvolutionalSequence(
                 self.layers, num_channels,
-                image_size=image_shape,
-                batch_size=self.batch_size)
+                image_size=image_shape)
         self.conv_sequence.name = 'cs'
 
         # Construct a top MLP
         self.top_mlp = MLP(top_mlp_activations, top_mlp_dims,
-                prototype=NoisyLinear(batch_size=self.batch_size))
+                prototype=NoisyLinear(noise_batch_size=self.noise_batch_size))
 
         # We need to flatten the output of the last convolutional layer.
         # This brick accepts a tensor of dimension (batch_size, ...) and
@@ -398,7 +402,7 @@ class NoisyLeNet(FeedforwardSequence, Initializable):
         self.top_mlp.dims = [np.prod(conv_out_dim)] + self.top_mlp_dims
 
 
-def create_noisy_lenet_5(batch_size):
+def create_noisy_lenet_5(noise_batch_size):
     feature_maps = [6, 16]
     mlp_hiddens = [120, 84]
     conv_sizes = [5, 5]
@@ -413,7 +417,7 @@ def create_noisy_lenet_5(batch_size):
     # Use ReLUs everywhere and softmax for the final prediction
     conv_activations = [Rectifier() for _ in feature_maps]
     mlp_activations = [Rectifier() for _ in mlp_hiddens] + [Softmax()]
-    convnet = NoisyLeNet(conv_activations, 1, image_size, batch_size,
+    convnet = NoisyLeNet(conv_activations, 1, image_size, noise_batch_size,
                     filter_sizes=zip(conv_sizes, conv_sizes),
                     feature_maps=feature_maps,
                     pooling_sizes=zip(pool_sizes, pool_sizes),
