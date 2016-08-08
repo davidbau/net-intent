@@ -168,9 +168,9 @@ def main(save_to, num_epochs,
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
                   EpochSchedule(momentum.learning_rate, [
-                      (100, 0.01),
-                      (150, 0.001),
-                      (200, 0.0001)
+                      (200, 0.01),
+                      (225, 0.001),
+                      (250, 0.0001)
                   ]),
                   DataStreamMonitoring(
                       [test_cost, test_error_rate, test_confusion],
@@ -245,12 +245,12 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     parser = ArgumentParser("An example of training a convolutional network "
                             "on the CIFAR dataset.")
-    parser.add_argument("--num-epochs", type=int, default=350,
+    parser.add_argument("--num-epochs", type=int, default=275,
                         help="Number of training epochs to do.")
     parser.add_argument("--batch-size", type=int, default=256,
                         help="Number of training examples per minibatch.")
     parser.add_argument("--histogram", help="histogram file")
-    parser.add_argument("save_to", default="cifar10-resnet.tar", nargs="?",
+    parser.add_argument("save_to", default="cifar10-resnet0b200.tar", nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
     parser.add_argument('--regularization', type=float, default=0.001,
