@@ -4,6 +4,7 @@
 import logging
 from argparse import ArgumentParser
 
+import theano
 from theano import tensor
 
 from blocks.algorithms import Scale, AdaDelta, GradientDescent, Momentum
@@ -106,13 +107,13 @@ def main(save_to, num_epochs,
     weights = VariableFilter(roles=[WEIGHT])(train_cg.variables)
 
     test_nits = VariableFilter(roles=[NITS])(train_cg.auxiliary_variables)
-    test_nit_rate = tensor.concatenate([n.flatten() for n in nits]).mean()
+    test_nit_rate = tensor.concatenate([n.flatten() for n in test_nits]).mean()
     test_nit_rate.name = 'nit_rate'
 
     train_nit_rate = test_nit_rate
 
-    # l2_norm = sum([(W ** 2).sum() for W in weights])
-    # l2_norm.name = 'l2_norm'
+    l2_norm = sum([(W ** 2).sum() for W in weights])
+    l2_norm.name = 'l2_norm'
     # l2_regularization = regularization * l2_norm
     # l2_regularization.name = 'l2_regularization'
     # test_cost = test_cost + l2_regularization
@@ -124,7 +125,7 @@ def main(save_to, num_epochs,
     nit_penalty.name = 'nit_penalty'
     train_cost_without_regularization = train_cost
     train_cost_without_regularization.name = 'cost_without_regularization'
-    nit_regularization = nit_penalty * nit_rate
+    nit_regularization = nit_penalty * train_nit_rate
     nit_regularization.name = 'nit_regularization'
     train_cost = train_cost + nit_regularization
     train_cost.name = 'cost_with_regularization'
@@ -180,7 +181,8 @@ def main(save_to, num_epochs,
                   TrainingDataMonitoring(
                       [train_cost, train_error_rate, train_nit_rate,
                        train_cost_without_regularization,
-                       nit_penality,
+                       l2_norm,
+                       nit_penalty,
                        nit_regularization,
                        momentum.learning_rate,
                        aggregation.mean(algorithm.total_gradient_norm)],
