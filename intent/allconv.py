@@ -24,6 +24,7 @@ import numpy
 import theano
 from toolz.itertoolz import interleave
 from intent.noisy import NoisyConvolutional
+from intent.mask import ChannelMask
 
 
 class GlobalAverageFlattener(Brick):
@@ -90,6 +91,10 @@ class AllConvNet(FeedforwardSequence, Initializable):
                            name='conv_{}'.format(i))
              for i, (num_filters, filter_size, conv_step, border_mode)
                  in enumerate(conv_parameters)])
+
+        # Add two trivial channel masks to allow by-channel dropout
+        self.convolutions.insert(6, ChannelMask(name='mask_1'))
+        self.convolutions.insert(3, ChannelMask(name='mask_0'))
 
         self.conv_sequence = ConvolutionalSequence(list(interleave([
             self.convolutions,
