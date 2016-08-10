@@ -59,7 +59,7 @@ def main(save_to, num_epochs,
          regularization=None, annealing=None,
          histogram=None, resume=False):
     output_size = 10
-    convnet = create_noisy_all_conv_net(batch_size)
+    convnet = create_noisy_all_conv_net(batch_size, True)
 
     x = tensor.tensor4('features')
     y = tensor.lmatrix('targets')
@@ -114,8 +114,8 @@ def main(save_to, num_epochs,
 
     l2_norm = sum([(W ** 2).sum() for W in weights])
     l2_norm.name = 'l2_norm'
-    # l2_regularization = regularization * l2_norm
-    # l2_regularization.name = 'l2_regularization'
+    l2_regularization = 0.0001 * l2_norm
+    l2_regularization.name = 'l2_regularization'
     # test_cost = test_cost + l2_regularization
     # test_cost.name = 'cost_with_regularization'
 
@@ -127,7 +127,7 @@ def main(save_to, num_epochs,
     train_cost_without_regularization.name = 'cost_without_regularization'
     nit_regularization = nit_penalty * train_nit_rate
     nit_regularization.name = 'nit_regularization'
-    train_cost = train_cost + nit_regularization
+    train_cost = train_cost + nit_regularization + l2_regularization
     train_cost.name = 'cost_with_regularization'
 
     cifar10_train = CIFAR10(("train",))
@@ -171,7 +171,6 @@ def main(save_to, num_epochs,
                       (250, 0.0005),
                       (300, 0.00005)
                   ]),
-                  EpochExponentiation(nit_penalty, 1 - annealing),
                   NoisyDataStreamMonitoring(
                       [test_cost, test_error_rate, test_nit_rate,
                           test_confusion],
@@ -183,6 +182,7 @@ def main(save_to, num_epochs,
                        train_cost_without_regularization,
                        l2_norm,
                        nit_penalty,
+                       l2_regularization,
                        nit_regularization,
                        momentum.learning_rate,
                        aggregation.mean(algorithm.total_gradient_norm)],
@@ -193,6 +193,7 @@ def main(save_to, num_epochs,
                       channels=[
                           ['train_cost_with_regularization',
                            'train_cost_without_regularization',
+                           'train_l2_regularization',
                            'train_nit_regularization'],
                           ['train_error_rate'],
                           ['train_total_gradient_norm'],
@@ -207,6 +208,9 @@ def main(save_to, num_epochs,
                   Checkpoint(save_to),
                   ProgressBar(),
                   Printing()]
+
+    if annealing:
+        extensions.append(EpochExponentiation(nit_penalty, 1 - annealing))
 
     if histogram:
         attribution = AttributionExtension(
@@ -254,12 +258,12 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=64,
                         help="Number of training examples per minibatch.")
     parser.add_argument("--histogram", help="histogram file")
-    parser.add_argument("save_to", default="cifar10-na.01a.tar", nargs="?",
+    parser.add_argument("save_to", default="cifar10-rna25.01w.tar", nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
     parser.add_argument('--regularization', type=float, default=0.01,
                         help="Amount of regularization to apply.")
-    parser.add_argument('--annealing', type=float, default=0.01,
+    parser.add_argument('--annealing', type=float, default=0,
                         help="Rate of annealing to apply.")
     parser.add_argument('--subset', type=int, default=None,
                         help="Size of limited training set.")

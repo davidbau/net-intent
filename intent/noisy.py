@@ -191,10 +191,109 @@ class NoisyConvolutional(Initializable, Feedforward, Random):
                  tied_biases=True,
                  prior_mean=0, prior_noise_level=0, **kwargs):
         self.convolution = Convolutional()
+        self.rectifier = Rectifier()
+        self.mask = Convolutional(name='mask')
+        children = [self.convolution, self.rectifier, self.mask]
+        kwargs.setdefault('children', []).extend(children)
+        super(NoisyConvolutional, self).__init__(**kwargs)
+        self.filter_size = filter_size
+        self.num_filters = num_filters
+        self.num_channels = num_channels
+        self.noise_batch_size = noise_batch_size
+        self.image_size = image_size
+        self.step = step
+        self.border_mode = border_mode
+        self.tied_biases = tied_biases
+        self.prior_mean = prior_mean
+        self.prior_noise_level = prior_noise_level
+
+    def _push_allocation_config(self):
+        self.convolution.filter_size = self.filter_size
+        self.convolution.num_filters = self.num_filters
+        self.convolution.num_channels = self.num_channels
+        # self.convolution.batch_size = self.batch_size
+        self.convolution.image_size = self.image_size
+        self.convolution.step = self.step
+        self.convolution.border_mode = self.border_mode
+        self.convolution.tied_biases = self.tied_biases
+        self.mask.filter_size = (1, 1)
+        self.mask.num_filters = self.num_filters
+        self.mask.num_channels = self.num_filters
+        # self.mask.batch_size = self.batch_size
+        self.mask.image_size = self.convolution.get_dim('output')[1:]
+        # self.mask.step = self.step
+        # self.mask.border_mode = self.border_mode
+        self.mask.tied_biases = self.tied_biases
+
+    def _allocate(self):
+        out_shape = self.convolution.get_dim('output')
+        N = shared_floatx_zeros((self.noise_batch_size,) + out_shape, name='N')
+        add_role(N, NOISE)
+        self.parameters.append(N)
+
+    @application(inputs=['input_'], outputs=['output'])
+    def apply(self, input_, application_call):
+        """Apply the linear transformation followed by masking with noise.
+        Parameters
+        ----------
+        input_ : :class:`~tensor.TensorVariable`
+            The input on which to apply the transformations
+        Returns
+        -------
+        output : :class:`~tensor.TensorVariable`
+            The transformed input
+        """
+        from theano.printing import Print
+
+        pre_noise = self.rectifier.apply(self.convolution.apply(input_))
+        # noise_level = self.mask.apply(input_)
+        noise_level = tensor.clip(self.mask.apply(pre_noise), -16, 16)
+        # Allow incomplete batches by just taking the noise that is needed
+        noise = self.parameters[0][:noise_level.shape[0], :, :, :]
+        # noise = self.theano_rng.normal(noise_level.shape)
+        kl = (
+            self.prior_noise_level - noise_level 
+            + 0.5 * (
+                tensor.exp(2 * noise_level)
+                + (pre_noise - self.prior_mean) ** 2
+                ) / tensor.exp(2 * self.prior_noise_level)
+            - 0.5
+            )
+        application_call.add_auxiliary_variable(kl, roles=[NITS], name='nits')
+        return pre_noise + tensor.exp(noise_level) * noise
+
+    def get_dim(self, name):
+        if name == 'input_':
+            return self.convolution.get_dim(name)
+        if name == 'output':
+            return self.convolution.get_dim(name)
+        if name == 'nits':
+            return self.convolution.get_dim('output')
+        return super(NoisyConvolutional, self).get_dim(name)
+
+    @property
+    def num_output_channels(self):
+        return self.num_filters
+
+
+class NoisyConvolutional2(Initializable, Feedforward, Random):
+    """Convolutional transformation sent through a learned noisy channel.
+
+    Applies the noise after the Relu rather than before it.
+
+    Parameters (same as Convolutional)
+    """
+    @lazy(allocation=[
+        'filter_size', 'num_filters', 'num_channels', 'noise_batch_size'])
+    def __init__(self, filter_size, num_filters, num_channels, noise_batch_size,
+                 image_size=(None, None), step=(1, 1), border_mode='valid',
+                 tied_biases=True,
+                 prior_mean=0, prior_noise_level=0, **kwargs):
+        self.convolution = Convolutional()
         self.mask = Convolutional(name='mask')
         children = [self.convolution, self.mask]
         kwargs.setdefault('children', []).extend(children)
-        super(NoisyConvolutional, self).__init__(**kwargs)
+        super(NoisyConvolutional2, self).__init__(**kwargs)
         self.filter_size = filter_size
         self.num_filters = num_filters
         self.num_channels = num_channels
@@ -274,6 +373,18 @@ class NoisyConvolutional(Initializable, Feedforward, Random):
     def num_output_channels(self):
         return self.num_filters
 
+class NoisyAveragePredictor(object):
+    def __init__(self, probs, labels, noise_params):
+        self.probs = probs
+        self.labels = labels 
+        self.data_stream = data_stream
+        self.noise_params = noise_params
+
+    def compile(self):
+        pass
+
+    def evaluate(self, data_stream):
+        pass
 
 class NoisyDataStreamMonitoring(DataStreamMonitoring):
     def __init__(self, variables, data_stream,
