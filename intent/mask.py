@@ -9,10 +9,10 @@ from blocks.bricks import FeedforwardSequence
 from blocks.bricks import Initializable
 from blocks.bricks import application
 from blocks.bricks import lazy
-from blocks.roles import add_role, AuxiliaryRole, ParameterRole
+from blocks.roles import add_role, AuxiliaryRole, ParameterRole, VariableRole
 
 
-class ChannelMaskRole(AuxiliaryRole):
+class ChannelMaskRole(VariableRole):
     pass
 
 # Role for parameters that are used to inject noise during training.
