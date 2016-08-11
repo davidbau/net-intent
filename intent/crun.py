@@ -86,8 +86,8 @@ def main(save_to, num_epochs,
     # train_cg = apply_dropout(drop_cg, dropout_vars_2, 0.2)
 
     # Apply 0.2 dropout to the input, as in the paper
-    train_cg = apply_dropout(drop_cg, [x], 0.2)
-    # train_cg = drop_cg
+    # train_cg = apply_dropout(drop_cg, [x], 0.2)
+    train_cg = drop_cg
     # train_cg = test_cg
 
     train_cost, train_error_rate, train_components = train_cg.outputs
@@ -230,7 +230,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=200,
                         help="Number of training examples per minibatch.")
     parser.add_argument("--histogram", help="histogram file")
-    parser.add_argument("save_to", default="cifar10-allconv-paper.tar", nargs="?",
+    parser.add_argument("save_to", default="cifar10-allconv-25.tar", nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
     parser.add_argument('--regularization', type=float, default=0.001,
