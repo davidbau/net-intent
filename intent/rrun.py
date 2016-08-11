@@ -107,7 +107,7 @@ def main(save_to, num_epochs,
                 train_error_rate, train_components])
     population_updates = get_batch_normalization_updates(train_cg)
     bn_alpha = 0.9
-    extra_updates = [(p, m * bn_alpha + p * (1 - bn_alpha))
+    extra_updates = [(p, p * bn_alpha + m * (1 - bn_alpha))
                 for p, m in population_updates]
 
     # Apply regularization to the cost
@@ -142,7 +142,7 @@ def main(save_to, num_epochs,
             cifar10_test.num_examples, test_batch_size)),
         which_sources=('features',))
 
-    momentum = Momentum(0.1, 0.1)
+    momentum = Momentum(0.01, 0.9)
 
     # Create a step rule that doubles the learning rate of biases, like Caffe.
     # scale_bias = Restrict(Scale(2), biases)
@@ -168,10 +168,12 @@ def main(save_to, num_epochs,
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
                   EpochSchedule(momentum.learning_rate, [
-                      (100, 0.01),
-                      (150, 0.001)
-                      # (83, 0.01),
-                      # (125, 0.001)
+                      (0, 0.01),   # Warm up with 0.01 learning rate
+                      (1, 0.1),    # Then go back to 0.1
+                      # (100, 0.01),
+                      # (150, 0.001)
+                      (83, 0.01),  # Follow the schedule in the paper
+                      (125, 0.001)
                   ]),
                   DataStreamMonitoring(
                       [test_cost, test_error_rate, test_confusion],
@@ -246,16 +248,16 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     parser = ArgumentParser("An example of training a convolutional network "
                             "on the CIFAR dataset.")
-    parser.add_argument("--num-epochs", type=int, default=200,
+    parser.add_argument("--num-epochs", type=int, default=170,
                         help="Number of training epochs to do.")
     parser.add_argument("--batch-size", type=int, default=128,
                         help="Number of training examples per minibatch.")
     parser.add_argument("--histogram", help="histogram file")
-    parser.add_argument("save_to", default="cifar10-resnet-128-200.tar",
+    parser.add_argument("save_to", default="cifar10-resnet-paper.tar",
                         nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
-    parser.add_argument('--regularization', type=float, default=0.001,
+    parser.add_argument('--regularization', type=float, default=0.0001,
                         help="Amount of regularization to apply.")
     parser.add_argument('--subset', type=int, default=None,
                         help="Size of limited training set.")
