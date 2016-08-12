@@ -82,12 +82,13 @@ def main(save_to, num_epochs,
     # Apply 0.2 dropout to the pre-averaging layer
     # dropout_vars_2 = VariableFilter(
     #         roles=[OUTPUT], bricks=[Convolutional],
-    #         theano_name_regex="^conv_8_apply_output$")(test_cg.variables)
-    train_cg = apply_dropout(test_cg, dropout_vars_2, 0.2)
+    #         theano_name_regex="^conv_8_apply_output$")(drop_cg.variables)
+    # train_cg = apply_dropout(drop_cg, dropout_vars_2, 0.2)
 
     # Apply 0.2 dropout to the input, as in the paper
-    # train_cg = apply_dropout(test_cg, [x], 0.2)
-    # train_cg = drop_cg
+    # train_cg = apply_dropout(drop_cg, [x], 0.2)
+    train_cg = drop_cg
+    # train_cg = test_cg
 
     train_cost, train_error_rate, train_components = train_cg.outputs
 
@@ -115,7 +116,7 @@ def main(save_to, num_epochs,
         which_sources=('features',)),
         (32, 32), pad=5, which_sources=('features',))
 
-    test_batch_size = 500
+    test_batch_size = 1000
     cifar10_test = CIFAR10(("test",))
     cifar10_test_stream = NormalizeBatchLevels(DataStream.default_stream(
         cifar10_test,
@@ -123,12 +124,13 @@ def main(save_to, num_epochs,
             cifar10_test.num_examples, test_batch_size)),
         which_sources=('features',))
 
-    momentum = Momentum(0.05, 0.1)
+    momentum = Momentum(0.002, 0.9)
 
     # Create a step rule that doubles the learning rate of biases, like Caffe.
     # scale_bias = Restrict(Scale(2), biases)
     # step_rule = CompositeRule([scale_bias, momentum])
-    step_rule = CompositeRule([StepClipping(10), momentum])
+    # step_rule = CompositeRule([StepClipping(100), momentum])
+    step_rule = momentum
 
     # Train with simple SGD
     algorithm = GradientDescent(
@@ -142,9 +144,12 @@ def main(save_to, num_epochs,
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
                   EpochSchedule(momentum.learning_rate, [
-                      (200, 0.005),
-                      (250, 0.0005),
-                      (300, 0.00005)
+                      (1, 0.005),
+                      (3, 0.01),
+                      (5, 0.02),
+                      (200, 0.002),
+                      (250, 0.0002),
+                      (300, 0.00002)
                   ]),
                   DataStreamMonitoring(
                       [test_cost, test_error_rate, test_confusion],
@@ -157,8 +162,8 @@ def main(save_to, num_epochs,
                        momentum.learning_rate,
                        aggregation.mean(algorithm.total_gradient_norm)],
                       prefix="train",
-                      every_n_batches=100,
-                      after_epoch=True),
+                      every_n_batches=10),
+                      # after_epoch=True),
                   Plot('Training performance for ' + save_to,
                       channels=[
                           ['train_cost_with_regularization',
@@ -167,7 +172,8 @@ def main(save_to, num_epochs,
                           ['train_error_rate'],
                           ['train_total_gradient_norm'],
                       ],
-                      every_n_batches=100),
+                      every_n_batches=10),
+                      # after_batch=True),
                   Plot('Test performance for ' + save_to,
                       channels=[[
                           'train_error_rate',
@@ -221,10 +227,10 @@ if __name__ == "__main__":
                             "on the CIFAR dataset.")
     parser.add_argument("--num-epochs", type=int, default=350,
                         help="Number of training epochs to do.")
-    parser.add_argument("--batch-size", type=int, default=64,
+    parser.add_argument("--batch-size", type=int, default=200,
                         help="Number of training examples per minibatch.")
     parser.add_argument("--histogram", help="histogram file")
-    parser.add_argument("save_to", default="cifar10-2582.tar", nargs="?",
+    parser.add_argument("save_to", default="cifar10-allconv-25.tar", nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
     parser.add_argument('--regularization', type=float, default=0.001,
