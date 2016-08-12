@@ -23,6 +23,7 @@ from blocks.bricks.conv import Flattener, MaxPooling
 from blocks.bricks.interfaces import RNGMixin
 from blocks.extensions import SimpleExtension
 from blocks.extensions.monitoring import DataStreamMonitoring
+from blocks.graph import add_annotation
 from blocks.initialization import Constant, Uniform, IsotropicGaussian
 from blocks.monitoring.evaluators import DatasetEvaluator
 from blocks.roles import add_role, AuxiliaryRole, ParameterRole
@@ -49,7 +50,7 @@ class NitsRole(AuxiliaryRole):
 NITS = NitsRole()
 
 
-class LogSignmaRole(AuxiliaryRole):
+class LogSigmaRole(AuxiliaryRole):
     pass
 
 # Role for parameters that are used to inject noise during training.
@@ -63,7 +64,6 @@ def copy_and_tag_noise(variable, brick, role, name):
     # Theano name
     copy.name = "{}_apply_{}".format(brick.name, name)
     add_annotation(copy, brick)
-    add_annotation(copy, call)
     # Blocks name
     copy.tag.name = name
     add_role(copy, role)
@@ -207,7 +207,7 @@ class NoisyConvolutional2(Initializable, Feedforward, Random):
         self.mask = Convolutional(name='mask')
         children = [self.convolution, self.rectifier, self.mask]
         kwargs.setdefault('children', []).extend(children)
-        super(NoisyConvolutional, self).__init__(**kwargs)
+        super(NoisyConvolutional2, self).__init__(**kwargs)
         self.filter_size = filter_size
         self.num_filters = num_filters
         self.num_channels = num_channels
@@ -283,7 +283,7 @@ class NoisyConvolutional2(Initializable, Feedforward, Random):
             return self.convolution.get_dim(name)
         if name == 'nits':
             return self.convolution.get_dim('output')
-        return super(NoisyConvolutional, self).get_dim(name)
+        return super(NoisyConvolutional2, self).get_dim(name)
 
     @property
     def num_output_channels(self):
@@ -305,7 +305,7 @@ class NoisyConvolutional(Initializable, Feedforward, Random):
         self.mask = Convolutional(name='mask')
         children = [self.convolution, self.mask]
         kwargs.setdefault('children', []).extend(children)
-        super(NoisyConvolutional2, self).__init__(**kwargs)
+        super(NoisyConvolutional, self).__init__(**kwargs)
         self.filter_size = filter_size
         self.num_filters = num_filters
         self.num_channels = num_channels
