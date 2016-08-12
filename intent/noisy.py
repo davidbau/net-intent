@@ -48,12 +48,20 @@ class NitsRole(AuxiliaryRole):
 # Role for variables that quantify the number of nits at a unit.
 NITS = NitsRole()
 
+
+class LogSignmaRole(AuxiliaryRole):
+    pass
+
+# Role for parameters that are used to inject noise during training.
+LOG_SIGMA = LogSigmaRole()
+
+
 # Annotate all the nits variables
-def copy_and_tag_nits(variable, brick):
+def copy_and_tag_noise(variable, brick, role, name):
     """Helper method to copy a variable and annotate it."""
     copy = variable.copy()
     # Theano name
-    copy.name = "{}_apply_nits".format(brick.name)
+    copy.name = "{}_apply_{}".format(brick.name, name)
     add_annotation(copy, brick)
     add_annotation(copy, call)
     # Blocks name
@@ -153,6 +161,8 @@ class NoisyLinear(Initializable, Feedforward, Random):
         """
         pre_noise = self.linear.apply(input_)
         noise_level = -tensor.clip(self.mask.apply(pre_noise), -16, 16)
+        noise_level = copy_and_tag_noise(
+                noise_level, self, LOG_SIGMA, 'log_sigma')
 
         # Allow incomplete batches by just taking the noise that is needed
         # noise = Print('noise')(self.parameters[0][:noise_level.shape[0], :])
@@ -179,8 +189,10 @@ class NoisyLinear(Initializable, Feedforward, Random):
         return super(NoisyLinear, self).get_dim(name)
 
 
-class NoisyConvolutional(Initializable, Feedforward, Random):
+class NoisyConvolutional2(Initializable, Feedforward, Random):
     """Convolutional transformation sent through a learned noisy channel.
+
+    Applies the noise after the Relu rather than before it.
 
     Parameters (same as Convolutional)
     """
@@ -247,7 +259,9 @@ class NoisyConvolutional(Initializable, Feedforward, Random):
 
         pre_noise = self.rectifier.apply(self.convolution.apply(input_))
         # noise_level = self.mask.apply(input_)
-        noise_level = tensor.clip(self.mask.apply(pre_noise), -16, 16)
+        noise_level = -tensor.clip(self.mask.apply(pre_noise), -16, 16)
+        noise_level = copy_and_tag_noise(
+                noise_level, self, LOG_SIGMA, 'log_sigma')
         # Allow incomplete batches by just taking the noise that is needed
         noise = self.parameters[0][:noise_level.shape[0], :, :, :]
         # noise = self.theano_rng.normal(noise_level.shape)
@@ -276,10 +290,8 @@ class NoisyConvolutional(Initializable, Feedforward, Random):
         return self.num_filters
 
 
-class NoisyConvolutional2(Initializable, Feedforward, Random):
+class NoisyConvolutional(Initializable, Feedforward, Random):
     """Convolutional transformation sent through a learned noisy channel.
-
-    Applies the noise after the Relu rather than before it.
 
     Parameters (same as Convolutional)
     """
@@ -345,7 +357,9 @@ class NoisyConvolutional2(Initializable, Feedforward, Random):
 
         pre_noise = self.convolution.apply(input_)
         # noise_level = self.mask.apply(input_)
-        noise_level = tensor.clip(self.mask.apply(pre_noise), -16, 16)
+        noise_level = -tensor.clip(self.mask.apply(pre_noise), -16, 16)
+        noise_level = copy_and_tag_noise(
+                noise_level, self, LOG_SIGMA, 'log_sigma')
         # Allow incomplete batches by just taking the noise that is needed
         noise = self.parameters[0][:noise_level.shape[0], :, :, :]
         # noise = self.theano_rng.normal(noise_level.shape)
