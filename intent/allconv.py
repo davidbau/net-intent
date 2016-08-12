@@ -137,7 +137,9 @@ def create_all_conv_net():
 
 class NoisyAllConvNet(FeedforwardSequence, Initializable):
     def __init__(self, image_shape=None, output_size=None,
-            noise_batch_size=None, noise_after_rectifier=False, **kwargs):
+            noise_batch_size=None,
+            noise_without_rectifier=False,
+            noise_after_rectifier=False, **kwargs):
         self.num_channels = 3
         self.image_shape = image_shape or (32, 32)
         self.output_size = output_size or 10
@@ -171,7 +173,7 @@ class NoisyAllConvNet(FeedforwardSequence, Initializable):
                 layer.noise_batch_size = self.noise_batch_size
             self.convolutions.append(layer)
             layers.append(layer)
-            if cls != NoisyConvolutional2:
+            if cls != NoisyConvolutional2 and not noise_without_rectifier:
                 layers.append(Rectifier())
 
         self.conv_sequence = ConvolutionalSequence(layers,
