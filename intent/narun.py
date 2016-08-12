@@ -145,7 +145,7 @@ def main(save_to, num_epochs,
             cifar10_test.num_examples, batch_size)),
         which_sources=('features',))
 
-    momentum = Momentum(0.05, 0.1)
+    momentum = Momentum(0.002, 0.9)
 
     # Create a step rule that doubles the learning rate of biases, like Caffe.
     # scale_bias = Restrict(Scale(2), biases)
@@ -167,9 +167,12 @@ def main(save_to, num_epochs,
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
                   EpochSchedule(momentum.learning_rate, [
-                      (200, 0.005),
-                      (250, 0.0005),
-                      (300, 0.00005)
+                      (1, 0.005),
+                      (3, 0.01),
+                      (5, 0.02),
+                      (200, 0.002),
+                      (250, 0.0002),
+                      (300, 0.00002)
                   ]),
                   NoisyDataStreamMonitoring(
                       [test_cost, test_error_rate, test_nit_rate,
