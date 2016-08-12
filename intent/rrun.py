@@ -170,10 +170,10 @@ def main(save_to, num_epochs,
                   EpochSchedule(momentum.learning_rate, [
                       (0, 0.01),   # Warm up with 0.01 learning rate
                       (1, 0.1),    # Then go back to 0.1
-                      # (100, 0.01),
-                      # (150, 0.001)
-                      (83, 0.01),  # Follow the schedule in the paper
-                      (125, 0.001)
+                      (100, 0.01),
+                      (150, 0.001)
+                      # (83, 0.01),  # Follow the schedule in the paper
+                      # (125, 0.001)
                   ]),
                   DataStreamMonitoring(
                       [test_cost, test_error_rate, test_confusion],
@@ -248,12 +248,12 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     parser = ArgumentParser("An example of training a convolutional network "
                             "on the CIFAR dataset.")
-    parser.add_argument("--num-epochs", type=int, default=170,
+    parser.add_argument("--num-epochs", type=int, default=200,
                         help="Number of training epochs to do.")
     parser.add_argument("--batch-size", type=int, default=128,
                         help="Number of training examples per minibatch.")
     parser.add_argument("--histogram", help="histogram file")
-    parser.add_argument("save_to", default="cifar10-resnet-paper.tar",
+    parser.add_argument("save_to", default="cifar10-resnet-paper-long.tar",
                         nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
