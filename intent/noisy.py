@@ -28,6 +28,7 @@ from blocks.initialization import Constant, Uniform, IsotropicGaussian
 from blocks.monitoring.evaluators import DatasetEvaluator
 from blocks.roles import add_role, AuxiliaryRole, ParameterRole
 from blocks.utils import shared_floatx_zeros
+import collections
 from collections import OrderedDict
 import fuel
 from fuel.schemes import BatchScheme
@@ -160,7 +161,7 @@ class NoisyLinear(Initializable, Feedforward, Random):
             The transformed input
         """
         pre_noise = self.linear.apply(input_)
-        noise_level = -tensor.clip(self.mask.apply(pre_noise), -16, 16)
+        noise_level = -tensor.clip(self.mask.apply(pre_noise), -64, 16)
         noise_level = copy_and_tag_noise(
                 noise_level, self, LOG_SIGMA, 'log_sigma')
 
@@ -391,16 +392,15 @@ class NoisyConvolutional(Initializable, Feedforward, Random):
 class SpatialNoise(Initializable, Random):
     """A learned noise layer.
     """
-    @lazy(allocation=['num_channels', 'noise_batch_size'])
-    def __init__(self, num_channels, noise_batch_size, image_size=(None, None),
+    @lazy(allocation=['input_dim', 'noise_batch_size'])
+    def __init__(self, input_dim, noise_batch_size,
                  prior_mean=0, prior_noise_level=0, **kwargs):
         self.mask = Convolutional(name='mask')
         children = [self.mask]
         kwargs.setdefault('children', []).extend(children)
         super(SpatialNoise, self).__init__(**kwargs)
-        self.num_channels = num_channels
+        self.input_dim = input_dim
         self.noise_batch_size = noise_batch_size
-        self.image_size = image_size
         self.prior_mean = prior_mean
         self.prior_noise_level = prior_noise_level
 
@@ -411,8 +411,8 @@ class SpatialNoise(Initializable, Random):
         self.mask.image_size = self.image_size
 
     def _allocate(self):
-        out_shape = self.input_dim[1:]
-        N = shared_floatx_zeros((self.noise_batch_size,) + out_shape, name='N')
+        N = shared_floatx_zeros((self.noise_batch_size,) + self.input_dim,
+            name='N')
         add_role(N, NOISE)
         self.parameters.append(N)
 
@@ -428,7 +428,8 @@ class SpatialNoise(Initializable, Random):
         output : :class:`~tensor.TensorVariable`
             The transformed input
         """
-        noise_level = -tensor.clip(self.mask.apply(input_), -16, 16)
+        noise_level = (self.prior_noise_level -
+            tensor.clip(self.mask.apply(input_), -16, 16))
         noise_level = copy_and_tag_noise(
                 noise_level, self, LOG_SIGMA, 'log_sigma')
         # Allow incomplete batches by just taking the noise that is needed
