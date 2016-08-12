@@ -41,7 +41,7 @@ from intent.attrib import print_attributions
 from intent.attrib import save_attributions
 from intent.ablation import ConfusionMatrix
 from intent.ablation import Sum
-from intent.noisy import NITS, NOISE, NoiseExtension
+from intent.noisy import NITS, NOISE, LOG_SIGMA, NoiseExtension
 from intent.noisy import NoisyDataStreamMonitoring
 from intent.transform import RandomFlip
 from intent.transform import RandomPadCropFlip
@@ -105,6 +105,7 @@ def main(save_to, num_epochs,
     noise_parameters = VariableFilter(roles=[NOISE])(train_cg.parameters)
     biases = VariableFilter(roles=[BIAS])(train_cg.parameters)
     weights = VariableFilter(roles=[WEIGHT])(train_cg.variables)
+    logsigma = VariableFilter(roles=[LOG_SIGMA])(train_cg.variables)
 
     test_nits = VariableFilter(roles=[NITS])(train_cg.auxiliary_variables)
     test_nit_rate = tensor.concatenate([n.flatten() for n in test_nits]).mean()
@@ -118,6 +119,9 @@ def main(save_to, num_epochs,
     l2_regularization.name = 'l2_regularization'
     # test_cost = test_cost + l2_regularization
     # test_cost.name = 'cost_with_regularization'
+
+    mean_log_sigma = tensor.concatenate([n.flatten() for n in logsigma]).mean()
+    mean_log_sigma.name = 'log_sigma'
 
     # Training version of cost
     nit_penalty = theano.shared(numpy.asarray(
@@ -187,6 +191,7 @@ def main(save_to, num_epochs,
                        nit_penalty,
                        l2_regularization,
                        nit_regularization,
+                       train_log_sigma,
                        momentum.learning_rate,
                        aggregation.mean(algorithm.total_gradient_norm)],
                       prefix="train",
@@ -261,7 +266,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=64,
                         help="Number of training examples per minibatch.")
     parser.add_argument("--histogram", help="histogram file")
-    parser.add_argument("save_to", default="cifar10-rna25.01w.tar", nargs="?",
+    parser.add_argument("save_to", default="cifar10-fixed-rna25.01w.tar", nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
     parser.add_argument('--regularization', type=float, default=0.01,
