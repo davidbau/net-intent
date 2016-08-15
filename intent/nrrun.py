@@ -220,9 +220,13 @@ def main(save_to, num_epochs,
                       # (125, 0.001)
                   ]),
                   EpochSchedule(noise_rate, [
-                      (0, 1e-8),
-                      (50, 1e-7),
-                      (125, 1e-6)
+                      (0, 1e-6),
+                      (2, 1e-5),
+                      (4, 1e-4),
+                      (6, 1e-3),
+                      (8, 1e-2),
+                      (12, 1e-1),
+                      (17, 1)
                   ]),
                   NoiseExtension(
                       noise_parameters=noise_parameters),
