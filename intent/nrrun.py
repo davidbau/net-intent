@@ -317,13 +317,13 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=128,
                         help="Number of training examples per minibatch.")
     parser.add_argument("--histogram", help="histogram file")
-    parser.add_argument("save_to", default="cifar10-resnet-noisy-rate.tar",
+    parser.add_argument("save_to", default="cifar10-resnet-noisy-pressure.tar",
                         nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
     parser.add_argument('--weight-decay', type=float, default=0.0001,
                         help="Amount of W L2 regularization to apply.")
-    parser.add_argument('--noise-pressure', type=float, default=1e-7,
+    parser.add_argument('--noise-pressure', type=float, default=1e-5,
                         help="Amount of noise regularization to apply.")
     parser.add_argument('--subset', type=int, default=None,
                         help="Size of limited training set.")
