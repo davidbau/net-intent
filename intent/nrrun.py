@@ -60,12 +60,12 @@ sys.setrecursionlimit(50000)
 # For testing
 
 def main(save_to, num_epochs,
-         weight_decay=0.0001, noise_pressure=0.0001, subset=None, num_batches=None,
+         weight_decay=0.0001, noise_pressure=0, subset=None, num_batches=None,
          batch_size=None, histogram=None, resume=False):
     output_size = 10
 
-    noise_step_rule = Scale(1e-8)
-    noise_rate = noise_step_rule.learning_rate
+    noise_step_rule = Scale(1e-6)
+    noise_rate = theano.shared(numpy.asarray(1e-5, dtype=theano.config.floatX))
     convnet = create_res_net(mid_noise=True, noise_batch_size=batch_size,
             noise_rate=noise_rate)
 
@@ -220,9 +220,13 @@ def main(save_to, num_epochs,
                       # (125, 0.001)
                   ]),
                   EpochSchedule(noise_rate, [
-                      (0, 1e-8),
-                      (50, 1e-7),
-                      (125, 1e-6)
+                      (0, 1e-6),
+                      (2, 1e-5),
+                      (4, 1e-4),
+                      (8, 1e-3),
+                      (12, 1e-2),
+                      (20, 1e-1),
+                      (30, 1)
                   ]),
                   NoiseExtension(
                       noise_parameters=noise_parameters),
@@ -304,12 +308,12 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     parser = ArgumentParser("An example of training a convolutional network "
                             "on the CIFAR dataset.")
-    parser.add_argument("--num-epochs", type=int, default=200,
+    parser.add_argument("--num-epochs", type=int, default=350,
                         help="Number of training epochs to do.")
     parser.add_argument("--batch-size", type=int, default=128,
                         help="Number of training examples per minibatch.")
     parser.add_argument("--histogram", help="histogram file")
-    parser.add_argument("save_to", default="cifar10-resnet-noisy-rate.tar",
+    parser.add_argument("save_to", default="cifar10-resnet-noisy-rate-2.tar",
                         nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
