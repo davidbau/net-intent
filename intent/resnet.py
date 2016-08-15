@@ -26,11 +26,13 @@ from toolz.itertoolz import interleave
 
 
 class ResidualConvolutional(Initializable):
-    @lazy(allocation=['filter_size', 'num_filters', 'num_channels', 'noise_batch_size'])
+    @lazy(allocation=['filter_size', 'num_filters', 'num_channels',
+        'noise_batch_size'])
     def __init__(self, filter_size, num_filters, num_channels,
                  batch_size=None,
                  mid_noise=False,
                  noise_batch_size=None,
+                 noise_rate=None,
                  mid_rectifier=True,
                  image_size=(None, None), step=(1, 1),
                  **kwargs):
@@ -41,6 +43,7 @@ class ResidualConvolutional(Initializable):
         self.image_size = image_size
         self.mid_noise = mid_noise
         self.noise_batch_size = noise_batch_size
+        self.noise_rate = noise_rate
         self.step = step
         self.border_mode = 'half'
         self.tied_biases = True
@@ -49,7 +52,7 @@ class ResidualConvolutional(Initializable):
         self.c0 = Convolutional(name='c0')
         self.b0 = SpatialBatchNormalization(name='b0')
         self.r0 = Rectifier(name='r0') if mid_rectifier else None
-        self.n0 = (SpatialNoise(name='n0', prior_noise_level=(-2.718))
+        self.n0 = (SpatialNoise(name='n0', noise_rate=self.noise_rate)
                 if mid_noise else None)
         self.c1 = Convolutional(name='c1')
         self.b1 = SpatialBatchNormalization(name='b1')
@@ -164,11 +167,14 @@ class HeInitialization(NdarrayInitialization):
         return repr_attrs(self, 'gain')
 
 class ResNet(FeedforwardSequence, Initializable):
-    def __init__(self, image_size=None, output_size=None, mid_noise=False, noise_batch_size=None, **kwargs):
+    def __init__(self, image_size=None, output_size=None,
+            mid_noise=False, noise_batch_size=None, noise_rate=None,
+            **kwargs):
         self.num_channels = 3
         self.image_size = image_size or (32, 32)
         self.output_size = output_size or 10
         self.noise_batch_size = noise_batch_size
+        self.noise_rate = noise_rate
         n = 16
         num_filters = [16, 32, 64]
         num_channels = num_filters[0]
@@ -190,6 +196,7 @@ class ResNet(FeedforwardSequence, Initializable):
                     num_filters=num,
                     num_channels=num_channels,
                     mid_noise=mid_noise,
+                    noise_rate=noise_rate,
                     noise_batch_size=noise_batch_size,
                     step=(1, 1) if i < n - 1 else (2, 2),
                     name='group_%d_%d' % (num, i)
@@ -226,10 +233,11 @@ class ResNet(FeedforwardSequence, Initializable):
     def output_dim(self, value):
         self.top_mlp_dims[-1] = value
 
-def create_res_net(mid_noise=False, noise_batch_size=None):
+def create_res_net(mid_noise=False, noise_batch_size=None, noise_rate=None):
     net = ResNet(
         mid_noise=mid_noise,
         noise_batch_size=noise_batch_size,
+        noise_rate=noise_rate,
         weights_init=HeInitialization(),
         # weights_init=IsotropicGaussian(0.05),
         biases_init=Constant(0))

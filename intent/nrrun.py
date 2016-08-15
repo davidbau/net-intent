@@ -63,7 +63,11 @@ def main(save_to, num_epochs,
          weight_decay=0.0001, noise_pressure=0.0001, subset=None, num_batches=None,
          batch_size=None, histogram=None, resume=False):
     output_size = 10
-    convnet = create_res_net(mid_noise=True, noise_batch_size=batch_size)
+
+    noise_step_rule = Scale(1e-8)
+    noise_rate = noise_step_rule.learning_rate
+    convnet = create_res_net(mid_noise=True, noise_batch_size=batch_size,
+            noise_rate=noise_rate)
 
     x = tensor.tensor4('features')
     y = tensor.lmatrix('targets')
@@ -146,7 +150,8 @@ def main(save_to, num_epochs,
     noise_parameters = VariableFilter(roles=[NOISE])(train_cg.parameters)
     biases = VariableFilter(roles=[BIAS])(train_cg.parameters)
     weights = VariableFilter(roles=[WEIGHT])(train_cg.variables)
-    l2_norm = sum([(W ** 2).sum() for W in weights])
+    nonmask_weights = [p for p in weights if get_brick(p).name != 'mask']
+    l2_norm = sum([(W ** 2).sum() for W in nonmask_weights])
     l2_norm.name = 'l2_norm'
     l2_regularization = weight_decay * l2_norm
     l2_regularization.name = 'l2_regularization'
@@ -184,7 +189,7 @@ def main(save_to, num_epochs,
     # step_rule = CompositeRule([scale_bias, momentum])
 
     # Create a step rule that reduces the learning rate of noise
-    scale_mask = Restrict(Scale(1e-3), mask_parameters)
+    scale_mask = Restrict(noise_step_rule, mask_parameters)
     step_rule = CompositeRule([scale_mask, momentum])
 
     # from theano.compile.nanguardmode import NanGuardMode
@@ -207,12 +212,17 @@ def main(save_to, num_epochs,
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
                   EpochSchedule(momentum.learning_rate, [
-                      (0, 1e-6),   # Warm up with 0.01 learning rate
+                      (0, 0.01),   # Warm up with 0.01 learning rate
                       (10, 0.1),    # Then go back to 0.1
                       (100, 0.01),
                       (150, 0.001)
                       # (83, 0.01),  # Follow the schedule in the paper
                       # (125, 0.001)
+                  ]),
+                  EpochSchedule(noise_rate, [
+                      (0, 1e-8),
+                      (50, 1e-7),
+                      (125, 1e-6)
                   ]),
                   NoiseExtension(
                       noise_parameters=noise_parameters),
@@ -299,13 +309,13 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=128,
                         help="Number of training examples per minibatch.")
     parser.add_argument("--histogram", help="histogram file")
-    parser.add_argument("save_to", default="cifar10-resnet-noisy.tar",
+    parser.add_argument("save_to", default="cifar10-resnet-noisy-rate.tar",
                         nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
-    parser.add_argument('--weight-decay', type=float, default=1e-6,
+    parser.add_argument('--weight-decay', type=float, default=0.0001,
                         help="Amount of W L2 regularization to apply.")
-    parser.add_argument('--noise-pressure', type=float, default=1e-11,
+    parser.add_argument('--noise-pressure', type=float, default=1e-7,
                         help="Amount of noise regularization to apply.")
     parser.add_argument('--subset', type=int, default=None,
                         help="Size of limited training set.")

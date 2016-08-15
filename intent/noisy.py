@@ -393,7 +393,7 @@ class SpatialNoise(Initializable, Random):
     """A learned noise layer.
     """
     @lazy(allocation=['input_dim', 'noise_batch_size'])
-    def __init__(self, input_dim, noise_batch_size,
+    def __init__(self, input_dim, noise_batch_size, noise_rate=None,
                  prior_mean=0, prior_noise_level=0, **kwargs):
         self.mask = Convolutional(name='mask')
         children = [self.mask]
@@ -401,6 +401,7 @@ class SpatialNoise(Initializable, Random):
         super(SpatialNoise, self).__init__(**kwargs)
         self.input_dim = input_dim
         self.noise_batch_size = noise_batch_size
+        self.noise_rate = noise_rate if noise_rate is not None else 1.0
         self.prior_mean = prior_mean
         self.prior_noise_level = prior_noise_level
 
@@ -444,7 +445,7 @@ class SpatialNoise(Initializable, Random):
             - 0.5
             )
         application_call.add_auxiliary_variable(kl, roles=[NITS], name='nits')
-        return input_ + tensor.exp(noise_level) * noise
+        return input_ + self.noise_rate * tensor.exp(noise_level) * noise
 
     # Needed for the Feedforward interface.
     @property
