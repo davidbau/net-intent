@@ -223,10 +223,14 @@ def main(save_to, num_epochs,
                       (0, 1e-6),
                       (2, 1e-5),
                       (4, 1e-4),
-                      (6, 1e-3),
-                      (8, 1e-2),
-                      (12, 1e-1),
-                      (17, 1)
+                      (6, 3e-4),
+                      (8, 1e-3),
+                      (12, 3e-3),
+                      (17, 1e-2),
+                      (25, 3e-2),
+                      (50, 1e-1),
+                      (75, 3e-1),
+                      (125, 1)
                   ]),
                   NoiseExtension(
                       noise_parameters=noise_parameters),
