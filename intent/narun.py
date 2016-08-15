@@ -135,16 +135,16 @@ def main(save_to, num_epochs,
     train_cost.name = 'cost_with_regularization'
 
     cifar10_train = CIFAR10(("train",))
-    # cifar10_train_stream = RandomPadCropFlip(
-    #     NormalizeBatchLevels(DataStream.default_stream(
+    cifar10_train_stream = RandomPadCropFlip(
+        NormalizeBatchLevels(DataStream.default_stream(
+            cifar10_train, iteration_scheme=ShuffledScheme(
+                cifar10_train.num_examples, batch_size)),
+        which_sources=('features',)),
+        (32, 32), pad=5, which_sources=('features',))
+    # cifar10_train_stream = NormalizeBatchLevels(DataStream.default_stream(
     #        cifar10_train, iteration_scheme=ShuffledScheme(
     #             cifar10_train.num_examples, batch_size)),
-    #    which_sources=('features',)),
-    #    (32, 32), pad=5, which_sources=('features',))
-    cifar10_train_stream = NormalizeBatchLevels(DataStream.default_stream(
-           cifar10_train, iteration_scheme=ShuffledScheme(
-                cifar10_train.num_examples, batch_size)),
-        which_sources=('features',))
+    #     which_sources=('features',))
 
     cifar10_test = CIFAR10(("test",))
     cifar10_test_stream = NormalizeBatchLevels(DataStream.default_stream(
@@ -270,7 +270,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=64,
                         help="Number of training examples per minibatch.")
     parser.add_argument("--histogram", help="histogram file")
-    parser.add_argument("save_to", default="cifar10-fixed-rna25-noaug.01w.tar", nargs="?",
+    parser.add_argument("save_to", default="cifar10-fixed-rna25.0001w.tar", nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
     parser.add_argument('--regularization', type=float, default=0.01,
