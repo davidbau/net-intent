@@ -3,11 +3,13 @@
 import logging
 import numpy as np
 import theano
+import contextlib
 from theano import tensor
 from theano.printing import Print
 from picklable_itertools import chain, repeat, imap
 from picklable_itertools.extras import partition_all
 
+from blocks.bricks import Brick
 from blocks.bricks import Feedforward
 from blocks.bricks import FeedforwardSequence
 from blocks.bricks import Initializable
@@ -28,6 +30,7 @@ from blocks.initialization import Constant, Uniform, IsotropicGaussian
 from blocks.monitoring.evaluators import DatasetEvaluator
 from blocks.roles import add_role, AuxiliaryRole, ParameterRole
 from blocks.utils import shared_floatx_zeros
+from blocks.utils import find_bricks
 import collections
 from collections import OrderedDict
 import fuel
@@ -388,8 +391,37 @@ class NoisyConvolutional(Initializable, Feedforward, Random):
     def num_output_channels(self):
         return self.num_filters
 
+@contextlib.contextmanager
+def training_noise(*bricks):
+    r"""Context manager to run noise layers in "training mode".
+    """
+    # Avoid circular imports.
+    from blocks.bricks import BatchNormalization
 
-class SpatialNoise(Initializable, Random):
+    bn = find_bricks(bricks, lambda b: isinstance(b, NoiseLayer))
+    # Can't use either nested() (deprecated) nor ExitStack (not available
+    # on Python 2.7). Well, that sucks.
+    try:
+        for brick in bn:
+            brick.__enter__()
+        yield
+    finally:
+        for brick in bn[::-1]:
+            brick.__exit__()
+
+class NoiseLayer(Brick):
+    def __init__(self, **kwargs):
+        self._training_mode = []
+        super(NoiseLayer, self).__init__(**kwargs)
+
+    def __enter__(self):
+        self._training_mode.append(True)
+
+    def __exit__(self, *exc_info):
+        self._training_mode.pop()
+
+
+class SpatialNoise(NoiseLayer, Initializable, Random):
     """A learned noise layer.
     """
     @lazy(allocation=['input_dim', 'noise_batch_size'])
@@ -404,6 +436,7 @@ class SpatialNoise(Initializable, Random):
         self.noise_rate = noise_rate if noise_rate is not None else 1.0
         self.prior_mean = prior_mean
         self.prior_noise_level = prior_noise_level
+        self._training_mode = []
 
     def _push_allocation_config(self):
         self.mask.filter_size = (1, 1)
@@ -412,10 +445,11 @@ class SpatialNoise(Initializable, Random):
         self.mask.image_size = self.image_size
 
     def _allocate(self):
-        N = shared_floatx_zeros((self.noise_batch_size,) + self.input_dim,
-            name='N')
-        add_role(N, NOISE)
-        self.parameters.append(N)
+        if self.noise_batch_size is not None:
+            N = shared_floatx_zeros((self.noise_batch_size,) + self.input_dim,
+                name='N')
+            add_role(N, NOISE)
+            self.parameters.append(N)
 
     @application(inputs=['input_'], outputs=['output'])
     def apply(self, input_, application_call):
@@ -429,13 +463,20 @@ class SpatialNoise(Initializable, Random):
         output : :class:`~tensor.TensorVariable`
             The transformed input
         """
+
+        # When not in training mode, turn off noise
+        if not self._training_mode:
+            return input_
+
         noise_level = (self.prior_noise_level -
             tensor.clip(self.mask.apply(input_), -16, 16))
         noise_level = copy_and_tag_noise(
                 noise_level, self, LOG_SIGMA, 'log_sigma')
         # Allow incomplete batches by just taking the noise that is needed
-        noise = self.parameters[0][:noise_level.shape[0], :, :, :]
-        # noise = self.theano_rng.normal(noise_level.shape)
+        if self.noise_batch_size is not None:
+            noise = self.parameters[0][:noise_level.shape[0], :, :, :]
+        else:
+            noise = self.theano_rng.normal(noise_level.shape)
         kl = (
             self.prior_noise_level - noise_level
             + 0.5 * (
