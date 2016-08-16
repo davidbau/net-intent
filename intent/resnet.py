@@ -109,10 +109,6 @@ class ResidualConvolutional(Initializable):
         self.c1.step = (1, 1)
         self.c1.use_bias = False
         self.c1.push_allocation_config()
-        print('b0', self.b0.input_dim, self.b0.get_dim('output'))
-        print('c0', self.c0.get_dim('input_'), self.c0.get_dim('output'))
-        print('b1', self.b1.input_dim, self.b1.get_dim('output'))
-        print('c1', self.c1.get_dim('input_'), self.c1.get_dim('output'))
 
     @application(inputs=['input_'], outputs=['output'])
     def apply(self, input_):
