@@ -26,14 +26,15 @@ from toolz.itertoolz import interleave
 
 
 class ResidualConvolutional(Initializable):
-    @lazy(allocation=['filter_size', 'num_filters', 'num_channels',
-        'noise_batch_size'])
+    @lazy(allocation=['filter_size', 'num_filters', 'num_channels'])
     def __init__(self, filter_size, num_filters, num_channels,
                  batch_size=None,
                  mid_noise=False,
-                 noise_batch_size=None,
+                 out_noise=False,
                  noise_rate=None,
                  mid_rectifier=True,
+                 clean_identity=True,
+                 noise_batch_size=None,
                  image_size=(None, None), step=(1, 1),
                  **kwargs):
         self.filter_size = filter_size
@@ -44,6 +45,7 @@ class ResidualConvolutional(Initializable):
         self.mid_noise = mid_noise
         self.noise_batch_size = noise_batch_size
         self.noise_rate = noise_rate
+        self.clean_identity = clean_identity
         self.step = step
         self.border_mode = 'half'
         self.tied_biases = True
@@ -57,9 +59,11 @@ class ResidualConvolutional(Initializable):
         self.c1 = Convolutional(name='c1')
         self.b1 = SpatialBatchNormalization(name='b1')
         self.r1 = Rectifier(name='r1')
+        self.n1 = (SpatialNoise(name='n1', noise_rate=self.noise_rate)
+                if out_noise else None)
         kwargs.setdefault('children', []).extend([c for c in [
             self.c0, self.b0, self.r0, self.n0,
-            self.c1, self.b1, self.r1] if c is not None])
+            self.c1, self.b1, self.r1, self.n1] if c is not None])
         super(ResidualConvolutional, self).__init__(**kwargs)
 
     def get_dim(self, name):
@@ -104,6 +108,10 @@ class ResidualConvolutional(Initializable):
         self.b1.input_dim = c0_shape
         self.b1.push_allocation_config()
         self.r1.push_allocation_config()
+        if self.n1:
+            self.n1.noise_batch_size = self.noise_batch_size
+            self.n1.num_channels = self.num_filters
+            self.n1.image_size = c0_shape[1:]
 
     @application(inputs=['input_'], outputs=['output'])
     def apply(self, input_):
@@ -126,8 +134,19 @@ class ResidualConvolutional(Initializable):
                     axis=1)
         elif self.num_filters < self.num_channels:
             shortcut = shortcut[:,:self.num_channels,:,:]
-        response = shortcut + residual
-        return self.r1.apply(response)
+        if self.clean_identity:
+            # New resnet paper says: apply the relu before the sum
+            residual = self.r1.apply(residual)
+            response = shortcut + residual
+        else:
+            # Original resnet paper says: apply the relu after the sum
+            response = shortcut + residual
+            response = self.r1.apply(response)
+        # Apply noise after the relu
+        if self.n1:
+            return self.n1.apply(response)
+        else:
+            return response
 
 class GlobalAverageFlattener(Brick):
     """Flattens the input by applying spatial averaging for each channel.

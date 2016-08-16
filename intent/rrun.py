@@ -253,7 +253,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=128,
                         help="Number of training examples per minibatch.")
     parser.add_argument("--histogram", help="histogram file")
-    parser.add_argument("save_to", default="cifar10-resnet-paper-long.tar",
+    parser.add_argument("save_to", default="cifar10-resnet-newpaper-long.tar",
                         nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
