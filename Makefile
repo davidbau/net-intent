@@ -18,6 +18,8 @@ CIFAR10 = $(FUEL_DATA_PATH)/cifar10.hdf5
 
 all: solve
 
+cifar10: $(CIFAR10)
+
 $(VENV) env: env.sh
 	sh env.sh
 	touch $(VENV)
