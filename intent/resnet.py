@@ -32,8 +32,6 @@ class ResidualConvolutional(Initializable):
                  mid_noise=False,
                  out_noise=False,
                  noise_rate=None,
-                 mid_rectifier=True,
-                 clean_identity=True,
                  noise_batch_size=None,
                  image_size=(None, None), step=(1, 1),
                  **kwargs):
@@ -45,22 +43,21 @@ class ResidualConvolutional(Initializable):
         self.mid_noise = mid_noise
         self.noise_batch_size = noise_batch_size
         self.noise_rate = noise_rate
-        self.clean_identity = clean_identity
         self.step = step
         self.border_mode = 'half'
         self.tied_biases = True
         depth = 2
 
-        self.c0 = Convolutional(name='c0')
         self.b0 = SpatialBatchNormalization(name='b0')
-        self.r0 = Rectifier(name='r0') if mid_rectifier else None
+        self.r0 = Rectifier(name='r0')
         self.n0 = (SpatialNoise(name='n0', noise_rate=self.noise_rate)
                 if mid_noise else None)
-        self.c1 = Convolutional(name='c1')
+        self.c0 = Convolutional(name='c0')
         self.b1 = SpatialBatchNormalization(name='b1')
         self.r1 = Rectifier(name='r1')
         self.n1 = (SpatialNoise(name='n1', noise_rate=self.noise_rate)
                 if out_noise else None)
+        self.c1 = Convolutional(name='c1')
         kwargs.setdefault('children', []).extend([c for c in [
             self.c0, self.b0, self.r0, self.n0,
             self.c1, self.b1, self.r1, self.n1] if c is not None])
@@ -78,6 +75,14 @@ class ResidualConvolutional(Initializable):
         return self.num_filters
 
     def _push_allocation_config(self):
+        self.b0.input_dim = self.get_dim('input_')
+        self.b0.push_allocation_config()
+        if self.r0:
+            self.r0.push_allocation_config()
+        if self.n0:
+            self.n0.noise_batch_size = self.noise_batch_size
+            self.n0.num_channels = self.num_channels
+            self.n0.image_size = self.image_size
         self.c0.filter_size = self.filter_size
         self.c0.batch_size = self.batch_size
         self.c0.num_channels = self.num_channels
@@ -88,14 +93,13 @@ class ResidualConvolutional(Initializable):
         self.c0.use_bias = False
         self.c0.push_allocation_config()
         c0_shape = self.c0.get_dim('output')
-        self.b0.input_dim = c0_shape
-        self.b0.push_allocation_config()
-        if self.r0:
-            self.r0.push_allocation_config()
-        if self.n0:
-            self.n0.noise_batch_size = self.noise_batch_size
-            self.n0.num_channels = self.num_filters
-            self.n0.image_size = c0_shape[1:]
+        self.b1.input_dim = c0_shape
+        self.b1.push_allocation_config()
+        self.r1.push_allocation_config()
+        if self.n1:
+            self.n1.noise_batch_size = self.noise_batch_size
+            self.n1.num_channels = self.num_filters
+            self.n1.image_size = c0_shape[1:]
         self.c1.filter_size = self.filter_size
         self.c1.batch_size = self.batch_size
         self.c1.num_channels = self.num_filters
@@ -105,23 +109,27 @@ class ResidualConvolutional(Initializable):
         self.c1.step = (1, 1)
         self.c1.use_bias = False
         self.c1.push_allocation_config()
-        self.b1.input_dim = c0_shape
-        self.b1.push_allocation_config()
-        self.r1.push_allocation_config()
-        if self.n1:
-            self.n1.noise_batch_size = self.noise_batch_size
-            self.n1.num_channels = self.num_filters
-            self.n1.image_size = c0_shape[1:]
+        print('b0', self.b0.input_dim, self.b0.get_dim('output'))
+        print('c0', self.c0.get_dim('input_'), self.c0.get_dim('output'))
+        print('b1', self.b1.input_dim, self.b1.get_dim('output'))
+        print('c1', self.c1.get_dim('input_'), self.c1.get_dim('output'))
 
     @application(inputs=['input_'], outputs=['output'])
     def apply(self, input_):
-        first_conv = self.b0.apply(self.c0.apply(input_))
-        if self.r0:
-            first_conv = self.r0.apply(first_conv)
+        shortcut = input_
+        # Batchnorm, then Relu, then Convolution
+        first_conv = self.b0.apply(input_)
+        first_conv = self.r0.apply(first_conv)
         if self.n0:
             first_conv = self.n0.apply(first_conv)
-        residual = self.b1.apply(self.c1.apply(first_conv))
-        shortcut = input_
+        first_conv = self.c0.apply(input_)
+        # Batchnorm, then Relu, then Convolution (second time)
+        second_conv = self.b1.apply(first_conv)
+        second_conv = self.r1.apply(second_conv)
+        if self.n1:
+            second_conv = self.n0.apply(second_conv)
+        residual = second_conv
+
         # Apply stride and zero-padding to match shortcut to output
         if self.step and self.step != (1, 1):
             shortcut = shortcut[:,:,::self.step[0],::self.step[1]]
@@ -134,19 +142,9 @@ class ResidualConvolutional(Initializable):
                     axis=1)
         elif self.num_filters < self.num_channels:
             shortcut = shortcut[:,:self.num_channels,:,:]
-        if self.clean_identity:
-            # New resnet paper says: apply the relu before the sum
-            residual = self.r1.apply(residual)
-            response = shortcut + residual
-        else:
-            # Original resnet paper says: apply the relu after the sum
-            response = shortcut + residual
-            response = self.r1.apply(response)
-        # Apply noise after the relu
-        if self.n1:
-            return self.n1.apply(response)
-        else:
-            return response
+
+        response = shortcut + residual
+        return response
 
 class GlobalAverageFlattener(Brick):
     """Flattens the input by applying spatial averaging for each channel.
@@ -187,7 +185,7 @@ class HeInitialization(NdarrayInitialization):
 
 class ResNet(FeedforwardSequence, Initializable):
     def __init__(self, image_size=None, output_size=None,
-            mid_noise=False, noise_batch_size=None, noise_rate=None,
+            mid_noise=False, out_noise=False, noise_batch_size=None, noise_rate=None,
             **kwargs):
         self.num_channels = 3
         self.image_size = image_size or (32, 32)
@@ -205,8 +203,6 @@ class ResNet(FeedforwardSequence, Initializable):
                     border_mode='half',
                     tied_biases=True,
                     name='conv_0'),
-            SpatialBatchNormalization(name='bn_0'),
-            Rectifier(name='relu_0')
         ]
         for num in num_filters:
             for i in range(n):
@@ -215,13 +211,17 @@ class ResNet(FeedforwardSequence, Initializable):
                     num_filters=num,
                     num_channels=num_channels,
                     mid_noise=mid_noise,
+                    out_noise=out_noise,
                     noise_rate=noise_rate,
                     noise_batch_size=noise_batch_size,
                     step=(1, 1) if i < n - 1 else (2, 2),
                     name='group_%d_%d' % (num, i)
                 ))
                 num_channels = num
-
+        self.convolutions.extend([
+            SpatialBatchNormalization(name='bn_last'),
+            Rectifier(name='relu_last')
+       ])
         self.conv_sequence = ConvolutionalSequence(
                 self.convolutions,
                 image_size=self.image_size,
