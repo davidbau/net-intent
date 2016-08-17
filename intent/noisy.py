@@ -436,6 +436,7 @@ class SpatialNoise(NoiseLayer, Initializable, Random):
         kwargs.setdefault('children', []).extend(children)
         super(SpatialNoise, self).__init__(**kwargs)
         self.input_dim = input_dim
+        self.tied_noise = tied_noise
         self.noise_batch_size = noise_batch_size
         self.noise_rate = noise_rate if noise_rate is not None else 1.0
         self.prior_mean = prior_mean
