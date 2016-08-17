@@ -202,7 +202,7 @@ class ResNet(FeedforwardSequence, Initializable):
                     tied_biases=True,
                     name='conv_0'),
         ]
-        for num in num_filters:
+        for j, num in enumerate(num_filters):
             for i in range(n):
                 self.convolutions.append(ResidualConvolutional(
                     filter_size=(3, 3),
@@ -213,7 +213,7 @@ class ResNet(FeedforwardSequence, Initializable):
                     noise_rate=noise_rate,
                     noise_batch_size=noise_batch_size,
                     prior_noise_level=prior_noise_level,
-                    step=(1, 1) if i < n - 1 else (2, 2),
+                    step=(2, 2) if i == 0 and j > 0 else (1, 1),
                     name='group_%d_%d' % (num, i)
                 ))
                 num_channels = num
