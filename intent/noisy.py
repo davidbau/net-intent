@@ -427,8 +427,8 @@ class NoiseLayer(Brick):
 class SpatialNoise(NoiseLayer, Initializable, Random):
     """A learned noise layer.
     """
-    @lazy(allocation=['input_dim', 'noise_batch_size'])
-    def __init__(self, input_dim, noise_batch_size, noise_rate=None,
+    @lazy(allocation=['input_dim'])
+    def __init__(self, input_dim, noise_batch_size=None, noise_rate=None,
                  tied_noise=False,
                  prior_mean=0, prior_noise_level=0, **kwargs):
         self.mask = Convolutional(name='mask')

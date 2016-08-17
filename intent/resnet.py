@@ -186,6 +186,7 @@ class HeInitialization(NdarrayInitialization):
 class ResNet(FeedforwardSequence, Initializable):
     def __init__(self, image_size=None, output_size=None,
             mid_noise=False, out_noise=False, tied_noise=False,
+            final_noise=False,
             noise_batch_size=None,
             noise_rate=None, prior_noise_level=None,
             **kwargs):
@@ -225,7 +226,13 @@ class ResNet(FeedforwardSequence, Initializable):
         self.convolutions.extend([
             SpatialBatchNormalization(name='bn_last'),
             Rectifier(name='relu_last')
-       ])
+        ])
+        if final_noise:
+            self.convolutions.append(SpatialNoise(name='nfin',
+                noise_rate=noise_rate,
+                noise_batch_size=noise_batch_size,
+                tied_noise=tied_noise,
+                prior_noise_level=prior_noise_level))
         self.conv_sequence = ConvolutionalSequence(
                 self.convolutions,
                 image_size=self.image_size,
@@ -257,11 +264,13 @@ class ResNet(FeedforwardSequence, Initializable):
         self.top_mlp_dims[-1] = value
 
 def create_res_net(mid_noise=False, out_noise=False, tied_noise=False,
+         final_noise=False,
          noise_batch_size=None, noise_rate=None, prior_noise_level=None):
     net = ResNet(
         mid_noise=mid_noise,
         out_noise=out_noise,
         tied_noise=tied_noise,
+        final_noise=final_noise,
         noise_batch_size=noise_batch_size,
         noise_rate=noise_rate,
         prior_noise_level=prior_noise_level,
