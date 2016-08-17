@@ -164,7 +164,8 @@ class NoisyLinear(Initializable, Feedforward, Random):
             The transformed input
         """
         pre_noise = self.linear.apply(input_)
-        noise_level = -tensor.clip(self.mask.apply(pre_noise), -64, 16)
+        noise_level = (self.prior_noise_level
+                - tensor.clip(self.mask.apply(pre_noise), -16, 16))
         noise_level = copy_and_tag_noise(
                 noise_level, self, LOG_SIGMA, 'log_sigma')
 
@@ -263,7 +264,8 @@ class NoisyConvolutional2(Initializable, Feedforward, Random):
 
         pre_noise = self.rectifier.apply(self.convolution.apply(input_))
         # noise_level = self.mask.apply(input_)
-        noise_level = -tensor.clip(self.mask.apply(pre_noise), -16, 16)
+        noise_level = (self.prior_noise_level
+                - tensor.clip(self.mask.apply(pre_noise), -16, 16))
         noise_level = copy_and_tag_noise(
                 noise_level, self, LOG_SIGMA, 'log_sigma')
         # Allow incomplete batches by just taking the noise that is needed
@@ -361,7 +363,8 @@ class NoisyConvolutional(Initializable, Feedforward, Random):
 
         pre_noise = self.convolution.apply(input_)
         # noise_level = self.mask.apply(input_)
-        noise_level = -tensor.clip(self.mask.apply(pre_noise), -16, 16)
+        noise_level = (self.prior_noise_level -
+                tensor.clip(self.mask.apply(pre_noise), -16, 16))
         noise_level = copy_and_tag_noise(
                 noise_level, self, LOG_SIGMA, 'log_sigma')
         # Allow incomplete batches by just taking the noise that is needed
@@ -469,7 +472,7 @@ class SpatialNoise(NoiseLayer, Initializable, Random):
             return input_
 
         noise_level = (self.prior_noise_level -
-            tensor.clip(self.mask.apply(input_), -16, 16))
+                tensor.clip(self.mask.apply(input_), -16, 16))
         noise_level = copy_and_tag_noise(
                 noise_level, self, LOG_SIGMA, 'log_sigma')
         # Allow incomplete batches by just taking the noise that is needed

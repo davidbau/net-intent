@@ -44,10 +44,12 @@ from intent.ablation import ConfusionMatrix
 from intent.ablation import Sum
 from intent.noisy import NITS, NOISE, LOG_SIGMA, NoiseExtension
 from intent.noisy import NoisyDataStreamMonitoring
+from intent.noisy import training_noise
 from intent.transform import RandomFlip
 from intent.transform import RandomPadCropFlip
 from intent.transform import NormalizeBatchLevels
 from intent.schedule import EpochSchedule
+from intent.checkpoint import EpochCheckpoint
 import json
 from json import JSONEncoder, dumps
 import numpy
@@ -64,10 +66,11 @@ def main(save_to, num_epochs,
          batch_size=None, histogram=None, resume=False):
     output_size = 10
 
+    prior_noise_level = -10
     noise_step_rule = Scale(1e-6)
     noise_rate = theano.shared(numpy.asarray(1e-5, dtype=theano.config.floatX))
-    convnet = create_res_net(mid_noise=True, noise_batch_size=batch_size,
-            noise_rate=noise_rate)
+    convnet = create_res_net(out_noise=True, noise_rate=noise_rate,
+        prior_noise_level=prior_noise_level)
 
     x = tensor.tensor4('features')
     y = tensor.lmatrix('targets')
@@ -104,7 +107,8 @@ def main(save_to, num_epochs,
     # train_cost, train_error_rate, train_components = train_cg.outputs
 
     with batch_normalization(convnet):
-        train_probs = convnet.apply(x)
+        with training_noise(convnet):
+            train_probs = convnet.apply(x)
     train_cost = (CategoricalCrossEntropy().apply(y.flatten(), train_probs)
                 .copy(name='cost'))
     train_components = (ComponentwiseCrossEntropy().apply(y.flatten(),
@@ -121,16 +125,6 @@ def main(save_to, num_epochs,
     # for annealing
     nit_penalty = theano.shared(numpy.asarray(noise_pressure, dtype=theano.config.floatX))
     nit_penalty.name = 'nit_penalty'
-
-    # Compute noise rates for test graph
-    test_logsigma = VariableFilter(roles=[LOG_SIGMA])(test_cg.variables)
-    test_mean_log_sigma = tensor.concatenate([n.flatten() for n in test_logsigma]).mean()
-    test_mean_log_sigma.name = 'log_sigma'
-    test_nits = VariableFilter(roles=[NITS])(test_cg.auxiliary_variables)
-    test_nit_rate = tensor.concatenate([n.flatten() for n in test_nits]).mean()
-    test_nit_rate.name = 'nit_rate'
-    test_nit_regularization = nit_penalty * test_nit_rate
-    test_nit_regularization.name = 'nit_regularization'
 
     # Compute noise rates for training graph
     train_logsigma = VariableFilter(roles=[LOG_SIGMA])(train_cg.variables)
@@ -157,7 +151,7 @@ def main(save_to, num_epochs,
     l2_regularization.name = 'l2_regularization'
 
     # testversion
-    test_cost = test_cost + l2_regularization + test_nit_regularization
+    test_cost = test_cost + l2_regularization
     test_cost.name = 'cost_with_regularization'
 
     # Training version of cost
@@ -205,6 +199,8 @@ def main(save_to, num_epochs,
     #        'mode': NanGuardMode(
     #            nan_is_error=True, inf_is_error=True, big_is_error=True)})
 
+    exp_name = save_to.replace('.%d', '')
+
     # `Timing` extension reports time for reading data, aggregating a batch
     # and monitoring;
     # `ProgressBar` displays a nice progress bar during training.
@@ -212,27 +208,36 @@ def main(save_to, num_epochs,
                   FinishAfter(after_n_epochs=num_epochs,
                               after_n_batches=num_batches),
                   EpochSchedule(momentum.learning_rate, [
-                      (0, 0.01),   # Warm up with 0.01 learning rate
-                      (10, 0.1),    # Then go back to 0.1
+                      (0, 0.01),     # Warm up with 0.01 learning rate
+                      (10, 0.1),     # Then go back to 0.1
                       (100, 0.01),
                       (150, 0.001)
                       # (83, 0.01),  # Follow the schedule in the paper
                       # (125, 0.001)
                   ]),
                   EpochSchedule(noise_step_rule.learning_rate, [
-                      (0, 1e-6),
-                      (2, 1e-5),
-                      (4, 1e-4)
+                      (0, 1e-2),
+                      (2, 1e-1),
+                      (4, 1)
+                      # (0, 1e-6),
+                      # (2, 1e-5),
+                      # (4, 1e-4)
                   ]),
                   EpochSchedule(noise_rate, [
-                      (0, 1e-6),
-                      (2, 1e-5),
-                      (4, 1e-4),
-                      (6, 3e-4),
-                      (8, 1e-3),
-                      (12, 1e-2),
-                      (20, 1e-1),
-                      (30, 1)
+                      (0, 1e-2),
+                      (2, 1e-1),
+                      (4, 1)
+                      # (0, 1e-6),
+                      # (2, 1e-5),
+                      # (4, 1e-4),
+                      # (6, 3e-4),
+                      # (8, 1e-3), # Causes nit rate to jump
+                      # (10, 3e-3),
+                      # (12, 1e-2),
+                      # (15, 3e-2),
+                      # (19, 1e-1),
+                      # (24, 3e-1),
+                      # (30, 1)
                   ]),
                   NoiseExtension(
                       noise_parameters=noise_parameters),
@@ -252,7 +257,7 @@ def main(save_to, num_epochs,
                       prefix="train",
                       every_n_batches=17),
                       # after_epoch=True),
-                  Plot('Training performance for ' + save_to,
+                  Plot('Training performance for ' + exp_name,
                       channels=[
                           ['train_cost_with_regularization',
                            'train_cost_without_regularization',
@@ -263,13 +268,13 @@ def main(save_to, num_epochs,
                           ['train_mean_log_sigma'],
                       ],
                       every_n_batches=17),
-                  Plot('Test performance for ' + save_to,
+                  Plot('Test performance for ' + exp_name,
                       channels=[[
                           'train_error_rate',
                           'test_error_rate',
                           ]],
                       after_epoch=True),
-                  Checkpoint(save_to, use_cpickle=True),
+                  EpochCheckpoint(save_to, use_cpickle=True, after_epoch=True),
                   ProgressBar(),
                   Printing()]
 
@@ -282,7 +287,7 @@ def main(save_to, num_epochs,
         extensions.insert(0, attribution)
 
     if resume:
-        extensions.append(Load(save_to, True, True))
+        extensions.append(Load(exp_name, True, True))
 
     model = Model(train_cost)
 
@@ -319,7 +324,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=128,
                         help="Number of training examples per minibatch.")
     parser.add_argument("--histogram", help="histogram file")
-    parser.add_argument("save_to", default="cifar10-resnet-noisy-rate-2.tar",
+    parser.add_argument("save_to", default="cifar10-resnet-noisy-rate-2.%d.tar",
                         nargs="?",
                         help="Destination to save the state of the training "
                              "process.")

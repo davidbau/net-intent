@@ -33,6 +33,7 @@ class ResidualConvolutional(Initializable):
                  out_noise=False,
                  noise_rate=None,
                  noise_batch_size=None,
+                 prior_noise_level=None,
                  image_size=(None, None), step=(1, 1),
                  **kwargs):
         self.filter_size = filter_size
@@ -50,13 +51,13 @@ class ResidualConvolutional(Initializable):
 
         self.b0 = SpatialBatchNormalization(name='b0')
         self.r0 = Rectifier(name='r0')
-        self.n0 = (SpatialNoise(name='n0', noise_rate=self.noise_rate)
-                if mid_noise else None)
+        self.n0 = (SpatialNoise(name='n0', noise_rate=self.noise_rate,
+                prior_noise_level=prior_noise_level) if mid_noise else None)
         self.c0 = Convolutional(name='c0')
         self.b1 = SpatialBatchNormalization(name='b1')
         self.r1 = Rectifier(name='r1')
-        self.n1 = (SpatialNoise(name='n1', noise_rate=self.noise_rate)
-                if out_noise else None)
+        self.n1 = (SpatialNoise(name='n1', noise_rate=self.noise_rate,
+                prior_noise_level=prior_noise_level) if out_noise else None)
         self.c1 = Convolutional(name='c1')
         kwargs.setdefault('children', []).extend([c for c in [
             self.c0, self.b0, self.r0, self.n0,
@@ -118,12 +119,12 @@ class ResidualConvolutional(Initializable):
         first_conv = self.r0.apply(first_conv)
         if self.n0:
             first_conv = self.n0.apply(first_conv)
-        first_conv = self.c0.apply(input_)
+        first_conv = self.c0.apply(first_conv)
         # Batchnorm, then Relu, then Convolution (second time)
         second_conv = self.b1.apply(first_conv)
         second_conv = self.r1.apply(second_conv)
         if self.n1:
-            second_conv = self.n0.apply(second_conv)
+            second_conv = self.n1.apply(second_conv)
         residual = second_conv
 
         # Apply stride and zero-padding to match shortcut to output
@@ -181,7 +182,8 @@ class HeInitialization(NdarrayInitialization):
 
 class ResNet(FeedforwardSequence, Initializable):
     def __init__(self, image_size=None, output_size=None,
-            mid_noise=False, out_noise=False, noise_batch_size=None, noise_rate=None,
+            mid_noise=False, out_noise=False, noise_batch_size=None,
+            noise_rate=None, prior_noise_level=None,
             **kwargs):
         self.num_channels = 3
         self.image_size = image_size or (32, 32)
@@ -210,6 +212,7 @@ class ResNet(FeedforwardSequence, Initializable):
                     out_noise=out_noise,
                     noise_rate=noise_rate,
                     noise_batch_size=noise_batch_size,
+                    prior_noise_level=prior_noise_level,
                     step=(1, 1) if i < n - 1 else (2, 2),
                     name='group_%d_%d' % (num, i)
                 ))
@@ -248,11 +251,14 @@ class ResNet(FeedforwardSequence, Initializable):
     def output_dim(self, value):
         self.top_mlp_dims[-1] = value
 
-def create_res_net(mid_noise=False, noise_batch_size=None, noise_rate=None):
+def create_res_net(mid_noise=False, out_noise=False,
+         noise_batch_size=None, noise_rate=None, prior_noise_level=None):
     net = ResNet(
         mid_noise=mid_noise,
+        out_noise=out_noise,
         noise_batch_size=noise_batch_size,
         noise_rate=noise_rate,
+        prior_noise_level=prior_noise_level,
         weights_init=HeInitialization(),
         # weights_init=IsotropicGaussian(0.05),
         biases_init=Constant(0))
