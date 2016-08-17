@@ -429,7 +429,7 @@ class SpatialNoise(NoiseLayer, Initializable, Random):
     """
     @lazy(allocation=['input_dim', 'noise_batch_size'])
     def __init__(self, input_dim, noise_batch_size, noise_rate=None,
-                 tied_noise=True,
+                 tied_noise=False,
                  prior_mean=0, prior_noise_level=0, **kwargs):
         self.mask = Convolutional(name='mask')
         children = [self.mask]
