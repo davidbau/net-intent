@@ -429,6 +429,7 @@ class SpatialNoise(NoiseLayer, Initializable, Random):
     """
     @lazy(allocation=['input_dim', 'noise_batch_size'])
     def __init__(self, input_dim, noise_batch_size, noise_rate=None,
+                 tied_noise=True,
                  prior_mean=0, prior_noise_level=0, **kwargs):
         self.mask = Convolutional(name='mask')
         children = [self.mask]
@@ -449,8 +450,12 @@ class SpatialNoise(NoiseLayer, Initializable, Random):
 
     def _allocate(self):
         if self.noise_batch_size is not None:
-            N = shared_floatx_zeros((self.noise_batch_size,) + self.input_dim,
-                name='N')
+            if self.tied_noise:
+                N = shared_floatx_zeros(
+                        (self.noise_batch_size, self.input_dim[0]), name='N')
+            else:
+                N = shared_floatx_zeros(
+                        (self.noise_batch_size,) + self.input_dim, name='N')
             add_role(N, NOISE)
             self.parameters.append(N)
 
@@ -476,10 +481,17 @@ class SpatialNoise(NoiseLayer, Initializable, Random):
         noise_level = copy_and_tag_noise(
                 noise_level, self, LOG_SIGMA, 'log_sigma')
         # Allow incomplete batches by just taking the noise that is needed
-        if self.noise_batch_size is not None:
-            noise = self.parameters[0][:noise_level.shape[0], :, :, :]
+        if self.tied_noise:
+            if self.noise_batch_size is not None:
+                noise = self.parameters[0][:noise_level.shape[0], :]
+            else:
+                noise = self.theano_rng.normal(noise_level.shape[0:2])
+            noise = tensor.shape_padright(2)
         else:
-            noise = self.theano_rng.normal(noise_level.shape)
+            if self.noise_batch_size is not None:
+                noise = self.parameters[0][:noise_level.shape[0], :, :, :]
+            else:
+                noise = self.theano_rng.normal(noise_level.shape)
         kl = (
             self.prior_noise_level - noise_level
             + 0.5 * (

@@ -69,8 +69,9 @@ def main(save_to, num_epochs,
     prior_noise_level = -10
     noise_step_rule = Scale(1e-6)
     noise_rate = theano.shared(numpy.asarray(1e-5, dtype=theano.config.floatX))
-    convnet = create_res_net(out_noise=True, noise_rate=noise_rate,
-        prior_noise_level=prior_noise_level)
+    convnet = create_res_net(out_noise=True, tied_noise=True,
+            noise_rate=noise_rate,
+            prior_noise_level=prior_noise_level)
 
     x = tensor.tensor4('features')
     y = tensor.lmatrix('targets')
@@ -209,7 +210,7 @@ def main(save_to, num_epochs,
                               after_n_batches=num_batches),
                   EpochSchedule(momentum.learning_rate, [
                       (0, 0.01),     # Warm up with 0.01 learning rate
-                      (10, 0.1),     # Then go back to 0.1
+                      (50, 0.1),     # Then go back to 0.1
                       (100, 0.01),
                       (150, 0.001)
                       # (83, 0.01),  # Follow the schedule in the paper
@@ -324,7 +325,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=128,
                         help="Number of training examples per minibatch.")
     parser.add_argument("--histogram", help="histogram file")
-    parser.add_argument("save_to", default="cifar10-resnet-noisy-rate-2.%d.tar",
+    parser.add_argument("save_to", default="cifar10-resnet-tied-noise.%d.tar",
                         nargs="?",
                         help="Destination to save the state of the training "
                              "process.")
