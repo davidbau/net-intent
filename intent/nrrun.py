@@ -69,7 +69,7 @@ def main(save_to, num_epochs,
     prior_noise_level = -10
     noise_step_rule = Scale(1e-6)
     noise_rate = theano.shared(numpy.asarray(1e-5, dtype=theano.config.floatX))
-    convnet = create_res_net(out_noise=True, final_noise=True,
+    convnet = create_res_net(out_noise=False, final_noise=True,
             noise_rate=noise_rate,
             prior_noise_level=prior_noise_level)
 
