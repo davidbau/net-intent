@@ -185,7 +185,8 @@ class HeInitialization(NdarrayInitialization):
 
 class ResNet(FeedforwardSequence, Initializable):
     def __init__(self, image_size=None, output_size=None,
-            mid_noise=False, out_noise=False, noise_batch_size=None,
+            mid_noise=False, out_noise=False, tied_noise=False,
+            noise_batch_size=None,
             noise_rate=None, prior_noise_level=None,
             **kwargs):
         self.num_channels = 3
@@ -213,6 +214,7 @@ class ResNet(FeedforwardSequence, Initializable):
                     num_channels=num_channels,
                     mid_noise=mid_noise,
                     out_noise=out_noise,
+                    tied_noise=tied_noise,
                     noise_rate=noise_rate,
                     noise_batch_size=noise_batch_size,
                     prior_noise_level=prior_noise_level,
