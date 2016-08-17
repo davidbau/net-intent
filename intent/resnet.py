@@ -19,6 +19,7 @@ from blocks.initialization import Constant, Uniform, NdarrayInitialization
 from blocks.initialization import IsotropicGaussian
 from blocks.utils import repr_attrs
 from intent.noisy import SpatialNoise
+from intent.flatten import GlobalAverageFlattener
 import numpy
 import theano
 from theano import tensor
@@ -32,6 +33,7 @@ class ResidualConvolutional(Initializable):
                  mid_noise=False,
                  out_noise=False,
                  tied_noise=False,
+                 tied_sigma=False,
                  noise_rate=None,
                  noise_batch_size=None,
                  prior_noise_level=None,
@@ -53,13 +55,13 @@ class ResidualConvolutional(Initializable):
         self.b0 = SpatialBatchNormalization(name='b0')
         self.r0 = Rectifier(name='r0')
         self.n0 = (SpatialNoise(name='n0', noise_rate=self.noise_rate,
-                tied_noise=tied_noise,
+                tied_noise=tied_noise, tied_sigma=tied_sigma,
                 prior_noise_level=prior_noise_level) if mid_noise else None)
         self.c0 = Convolutional(name='c0')
         self.b1 = SpatialBatchNormalization(name='b1')
         self.r1 = Rectifier(name='r1')
         self.n1 = (SpatialNoise(name='n1', noise_rate=self.noise_rate,
-                tied_noise=tied_noise,
+                tied_noise=tied_noise, tied_sigma=tied_sigma,
                 prior_noise_level=prior_noise_level) if out_noise else None)
         self.c1 = Convolutional(name='c1')
         kwargs.setdefault('children', []).extend([c for c in [
@@ -146,16 +148,6 @@ class ResidualConvolutional(Initializable):
         response = shortcut + residual
         return response
 
-class GlobalAverageFlattener(Brick):
-    """Flattens the input by applying spatial averaging for each channel.
-    It may be used to pass multidimensional objects like images or feature
-    maps of convolutional bricks into bricks which allow only two
-    dimensional input (batch, features) like MLP.
-    """
-    @application(inputs=['input_'], outputs=['output'])
-    def apply(self, input_):
-        return input_.mean(axis=list(range(2, input_.ndim)))
-
 class HeInitialization(NdarrayInitialization):
     """Initialize parameters from an isotropic Gaussian distribution.
     Parameters
@@ -186,7 +178,7 @@ class HeInitialization(NdarrayInitialization):
 class ResNet(FeedforwardSequence, Initializable):
     def __init__(self, image_size=None, output_size=None,
             mid_noise=False, out_noise=False, tied_noise=False,
-            final_noise=False,
+            tied_sigma=False, final_noise=False,
             noise_batch_size=None,
             noise_rate=None, prior_noise_level=None,
             **kwargs):
@@ -216,6 +208,7 @@ class ResNet(FeedforwardSequence, Initializable):
                     mid_noise=mid_noise,
                     out_noise=out_noise,
                     tied_noise=tied_noise,
+                    tied_sigma=tied_sigma,
                     noise_rate=noise_rate,
                     noise_batch_size=noise_batch_size,
                     prior_noise_level=prior_noise_level,
@@ -232,6 +225,7 @@ class ResNet(FeedforwardSequence, Initializable):
                 noise_rate=noise_rate,
                 noise_batch_size=noise_batch_size,
                 tied_noise=tied_noise,
+                tied_sigma=tied_sigma,
                 prior_noise_level=prior_noise_level))
         self.conv_sequence = ConvolutionalSequence(
                 self.convolutions,
@@ -264,12 +258,13 @@ class ResNet(FeedforwardSequence, Initializable):
         self.top_mlp_dims[-1] = value
 
 def create_res_net(mid_noise=False, out_noise=False, tied_noise=False,
-         final_noise=False,
+         tied_sigma=False, final_noise=False,
          noise_batch_size=None, noise_rate=None, prior_noise_level=None):
     net = ResNet(
         mid_noise=mid_noise,
         out_noise=out_noise,
         tied_noise=tied_noise,
+        tied_sigma=tied_sigma,
         final_noise=final_noise,
         noise_batch_size=noise_batch_size,
         noise_rate=noise_rate,

@@ -31,6 +31,7 @@ from blocks.monitoring.evaluators import DatasetEvaluator
 from blocks.roles import add_role, AuxiliaryRole, ParameterRole
 from blocks.utils import shared_floatx_zeros
 from blocks.utils import find_bricks
+from intent.flatten import GlobalAverageFlattener
 import collections
 from collections import OrderedDict
 import fuel
@@ -429,14 +430,16 @@ class SpatialNoise(NoiseLayer, Initializable, Random):
     """
     @lazy(allocation=['input_dim'])
     def __init__(self, input_dim, noise_batch_size=None, noise_rate=None,
-                 tied_noise=False,
+                 tied_noise=False, tied_sigma=False,
                  prior_mean=0, prior_noise_level=0, **kwargs):
         self.mask = Convolutional(name='mask')
-        children = [self.mask]
+        self.flatten = GlobalAverageFlattener() if tied_sigma else None
+        children = list(p for p in [self.mask, self.flatten] if p is not None)
         kwargs.setdefault('children', []).extend(children)
         super(SpatialNoise, self).__init__(**kwargs)
         self.input_dim = input_dim
         self.tied_noise = tied_noise
+        self.tied_sigma = tied_sigma
         self.noise_batch_size = noise_batch_size
         self.noise_rate = noise_rate if noise_rate is not None else 1.0
         self.prior_mean = prior_mean
@@ -477,27 +480,37 @@ class SpatialNoise(NoiseLayer, Initializable, Random):
         if not self._training_mode:
             return input_
 
-        noise_level = (self.prior_noise_level -
-                tensor.clip(self.mask.apply(input_), -16, 16))
-        noise_level = copy_and_tag_noise(
-                noise_level, self, LOG_SIGMA, 'log_sigma')
+        if self.tied_sigma:
+            average = tensor.shape_padright(self.flatten.apply(input_), 2)
+            noise_level = (self.prior_noise_level -
+                    tensor.clip(self.mask.apply(average), -16, 16))
+            noise_level = tensor.patternbroadcast(noise_level,
+                    (False, False, True, True))
+            noise_level = copy_and_tag_noise(
+                    noise_level, self, LOG_SIGMA, 'log_sigma')
+        else:
+            average = input_
+            noise_level = (self.prior_noise_level -
+                    tensor.clip(self.mask.apply(input_), -16, 16))
+            noise_level = copy_and_tag_noise(
+                    noise_level, self, LOG_SIGMA, 'log_sigma')
         # Allow incomplete batches by just taking the noise that is needed
         if self.tied_noise:
             if self.noise_batch_size is not None:
-                noise = self.parameters[0][:noise_level.shape[0], :]
+                noise = self.parameters[0][:input_.shape[0], :]
             else:
-                noise = self.theano_rng.normal(noise_level.shape[0:2])
+                noise = self.theano_rng.normal(input_.shape[0:2])
             noise = tensor.shape_padright(2)
         else:
             if self.noise_batch_size is not None:
-                noise = self.parameters[0][:noise_level.shape[0], :, :, :]
+                noise = self.parameters[0][:input_.shape[0], :, :, :]
             else:
-                noise = self.theano_rng.normal(noise_level.shape)
+                noise = self.theano_rng.normal(input_.shape)
         kl = (
             self.prior_noise_level - noise_level
             + 0.5 * (
                 tensor.exp(2 * noise_level)
-                + (input_ - self.prior_mean) ** 2
+                + (average - self.prior_mean) ** 2
                 ) / tensor.exp(2 * self.prior_noise_level)
             - 0.5
             )
