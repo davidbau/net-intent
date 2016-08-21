@@ -187,7 +187,7 @@ class ResNet(FeedforwardSequence, Initializable):
         self.output_size = output_size or 10
         self.noise_batch_size = noise_batch_size
         self.noise_rate = noise_rate
-        n = 16
+        n = 18
         num_filters = [16, 32, 64]
         num_channels = num_filters[0]
         self.convolutions = [
